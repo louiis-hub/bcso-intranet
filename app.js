@@ -969,8 +969,13 @@ async function editMdtPage(pageId) {
     theme: 'snow',
     modules: {
       toolbar: {
-        container: [[{'header':[1,2,3,false]}],'bold','italic','underline','strike',
-          [{'list':'ordered'},{'list':'bullet'}],'blockquote','link','image',{'color':[]},{'align':[]}],
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ['bold', 'italic', 'underline', 'strike'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['blockquote', 'link', 'image'],
+          [{ color: [] }, { align: [] }]
+        ],
         handlers: {
           image: function() {
             openModal({
@@ -986,7 +991,7 @@ async function editMdtPage(pageId) {
       }
     }
   });
-  if (page.contenu) _quill.root.innerHTML = page.contenu;
+  if (page.contenu) _quill.clipboard.dangerouslyPasteHTML(0, page.contenu);
 }
 
 async function saveMdtPage(pageId) {
