@@ -1,0 +1,1390 @@
+// ══════════════════════════════════════════════════════════════════
+//  BCSO INTRANET — app.js
+// ══════════════════════════════════════════════════════════════════
+
+// ── State ──────────────────────────────────────────────────────────
+var S = { user: null, appUser: null, role: 'agent', page: 'dashboard', pd: {} };
+var _quill = null;
+var _charts = {};
+var _agentPage = 1;
+var _agentFilters = { statut: '', grade: '', unite: '', search: '' };
+var _grades = [];
+var _mdtCats = [];
+var _mdtSelCat = null;
+var _mdtSelPage = null;
+
+var NAV = [
+  { id: 'dashboard', icon: '🏛️', label: 'Tableau de bord' },
+  { divider: true },
+  { group: 'RESSOURCES HUMAINES' },
+  { id: 'agents',   icon: '👮', label: 'Agents' },
+  { id: 'grades',   icon: '🎖️', label: 'Grades' },
+  { id: 'units',    icon: '🚔', label: 'Unités' },
+  { divider: true },
+  { group: 'DOCUMENTATION' },
+  { id: 'mdt',      icon: '📚', label: 'Guide MDT' },
+  { divider: true },
+  { group: 'ADMINISTRATION' },
+  { id: 'disciplinary', icon: '📝', label: 'Disciplinaire' },
+  { id: 'stats',    icon: '📈', label: 'Statistiques' },
+  { id: 'search',   icon: '🔍', label: 'Recherche' },
+  { id: 'settings', icon: '⚙️', label: 'Paramètres' },
+];
+
+var PAGE_TITLES = {
+  dashboard:'Tableau de bord', agents:'Agents', 'agent-profile':'Fiche agent',
+  grades:'Grades', units:'Unités', mdt:'Guide MDT',
+  disciplinary:'Disciplinaire', stats:'Statistiques', search:'Recherche', settings:'Paramètres'
+};
+
+// ── Boot ───────────────────────────────────────────────────────────
+(async function boot() {
+  try {
+    var { data: { session } } = await DB.getSession();
+    if (session) { await afterLogin(session.user); }
+    else { showLogin(); }
+  } catch(e) { showLogin(); }
+  DB.onAuthChange(async function(event, session) {
+    if (event === 'SIGNED_OUT') showLogin();
+  });
+})();
+
+// ── Auth ───────────────────────────────────────────────────────────
+async function doLogin(e) {
+  e.preventDefault();
+  var email = document.getElementById('loginEmail').value.trim();
+  var pass  = document.getElementById('loginPassword').value;
+  var errEl = document.getElementById('loginErr');
+  var btn   = document.getElementById('loginBtn');
+  var txt   = document.getElementById('loginBtnTxt');
+  errEl.classList.remove('show');
+  btn.disabled = true;
+  txt.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px"></span> Connexion…';
+  try {
+    var { data, error } = await DB.login(email, pass);
+    if (error) throw error;
+    await afterLogin(data.user);
+  } catch(err) {
+    errEl.textContent = '⚠ ' + (err.message || 'Identifiants incorrects.');
+    errEl.classList.add('show');
+    btn.disabled = false;
+    txt.textContent = 'Connexion';
+    document.getElementById('loginPassword').value = '';
+  }
+}
+
+async function afterLogin(user) {
+  S.user = user;
+  var appUser = await DB.getAppUser(user.id);
+  S.appUser = appUser;
+  S.role = (appUser && appUser.app_role) || 'agent';
+  _grades = await DB.getGrades();
+  showApp();
+  await navigate('dashboard');
+}
+
+async function doLogout() {
+  await DB.logout();
+  S.user = null; S.appUser = null; S.role = 'agent';
+  showLogin();
+}
+
+function showLogin() {
+  document.getElementById('loginView').style.display = '';
+  document.getElementById('appView').style.display = 'none';
+  document.getElementById('loginBtnTxt').textContent = 'Connexion';
+  document.getElementById('loginBtn').disabled = false;
+  var errEl = document.getElementById('loginErr');
+  if (errEl) errEl.classList.remove('show');
+}
+
+function showApp() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('appView').style.display = '';
+  buildNav();
+  updateUserUI();
+}
+
+// ── Navigation ─────────────────────────────────────────────────────
+function buildNav() {
+  var html = '';
+  NAV.forEach(function(item) {
+    if (item.divider) { html += '<div class="nav-divider"></div>'; return; }
+    if (item.group)   { html += '<div class="nav-group">' + item.group + '</div>'; return; }
+    html += '<div class="nav-item" data-page="' + item.id + '" onclick="navigate(\'' + item.id + '\')">' +
+      '<span class="nav-icon">' + item.icon + '</span>' + esc(item.label) + '</div>';
+  });
+  document.getElementById('sidebarNav').innerHTML = html;
+
+  var n = S.appUser ? S.appUser.prenom + ' ' + S.appUser.nom : S.user.email;
+  var initials = n.split(' ').map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2);
+  var roleLabel = { admin:'ADMIN', academy:'ACADÉMIE', agent:'AGENT' }[S.role] || S.role.toUpperCase();
+  document.getElementById('sidebarFooter').innerHTML =
+    '<div class="sidebar-user">' +
+      '<div class="sidebar-avatar">' + initials + '</div>' +
+      '<div><div class="sidebar-uname">' + esc(n) + '</div><div class="sidebar-urole">' + roleLabel + '</div></div>' +
+      '<button class="sidebar-logout" onclick="doLogout()" title="Déconnexion">⏻</button>' +
+    '</div>';
+
+  document.getElementById('userChip').innerHTML =
+    '<div class="user-chip-av">' + initials + '</div>' +
+    '<span class="user-chip-name">' + esc(n) + '</span>';
+}
+
+function updateUserUI() {
+  document.querySelectorAll('.nav-item[data-page]').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.page === S.page);
+  });
+  var title = PAGE_TITLES[S.page] || S.page;
+  var el = document.getElementById('pageTitle');
+  if (el) el.textContent = title;
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+
+// ── Router ─────────────────────────────────────────────────────────
+async function navigate(page, pd) {
+  S.page = page;
+  S.pd = pd || {};
+  updateUserUI();
+  Object.values(_charts).forEach(function(c){ try{c.destroy();}catch(e){} });
+  _charts = {};
+  _quill = null;
+  setContent('<div class="loader-block"><div class="spinner"></div><p>Chargement…</p></div>');
+  try {
+    var renderers = {
+      dashboard:      renderDashboard,
+      agents:         renderAgents,
+      'agent-profile':renderAgentProfile,
+      grades:         renderGrades,
+      units:          renderUnits,
+      mdt:            renderMDT,
+      disciplinary:   renderDisciplinary,
+      stats:          renderStats,
+      search:         renderSearch,
+      settings:       renderSettings
+    };
+    if (renderers[page]) await renderers[page]();
+    else setContent('<div class="empty-state"><div class="empty-icon">🚧</div><div class="empty-title">Page en construction</div></div>');
+  } catch(err) {
+    setContent('<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Erreur : ' + esc(err.message) + '</div></div>');
+  }
+  var sb = document.getElementById('sidebar');
+  if (sb && sb.classList.contains('open')) toggleSidebar();
+}
+
+function setContent(html) {
+  var el = document.getElementById('mainContent');
+  el.innerHTML = html;
+  el.classList.remove('page-in');
+  void el.offsetWidth;
+  el.classList.add('page-in');
+}
+
+// ── Modal ──────────────────────────────────────────────────────────
+function openModal(opts) {
+  document.getElementById('modalBox').className = 'modal-box' + (opts.size ? ' modal-' + opts.size : '');
+  document.getElementById('modalHd').innerHTML =
+    '<div><div class="modal-eye">' + esc(opts.eyebrow || '') + '</div><h2>' + (opts.title || '') + '</h2></div>' +
+    '<button class="btn-close-m" onclick="closeModal()">✕</button>';
+  document.getElementById('modalBody').innerHTML = opts.body || '';
+  document.getElementById('modalFt').innerHTML = opts.footer || '';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function onModalOverlayClick(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
+
+// ── Toast ──────────────────────────────────────────────────────────
+function toast(msg, type) {
+  type = type || 'info';
+  var icons = { success:'✓', error:'✕', info:'⭐' };
+  var el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.innerHTML = '<span>' + icons[type] + '</span><span>' + esc(msg) + '</span>';
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(function(){ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(function(){el.remove();}, 300); }, 3200);
+}
+
+// ── Permissions ────────────────────────────────────────────────────
+function isAdmin() { return S.role === 'admin'; }
+function canWrite() { return S.role === 'admin' || S.role === 'academy'; }
+
+// ── Utils ──────────────────────────────────────────────────────────
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmt(dateStr) {
+  if (!dateStr) return '—';
+  var d = new Date(dateStr);
+  return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+function fmtShort(dateStr) {
+  if (!dateStr) return '—';
+  var d = new Date(dateStr);
+  return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' });
+}
+function statusBadge(s) {
+  var map = { 'Actif':'badge-green','Suspendu':'badge-orange','Retraité':'badge-gray','Archivé':'badge-red' };
+  return '<span class="badge ' + (map[s]||'badge-gray') + '">' + esc(s) + '</span>';
+}
+function gradeBadge(g) {
+  return '<span class="badge badge-gold">' + esc(g) + '</span>';
+}
+function unitBadge(u) {
+  return '<span class="badge badge-blue">' + esc(u) + '</span>';
+}
+function typeIcon(t) {
+  return { promotion:'🎖️', sanction:'⚠️', recompense:'🏅', note:'📋' }[t] || '📝';
+}
+function typeDotClass(t) {
+  return 'tl-dot-' + (t || 'note');
+}
+function ppaCount(a) { return [a.ppa1,a.ppa2,a.ppa3].filter(Boolean).length; }
+
+// ══ DASHBOARD ══════════════════════════════════════════════════════
+async function renderDashboard() {
+  var agents = await DB.getAgents();
+  var hist = [];
+  try {
+    var { data: histData } = await getDb().from('agent_historique')
+      .select('*, agent:agent_id(nom,prenom,grade)')
+      .order('created_at', { ascending: false }).limit(8);
+    hist = histData || [];
+  } catch(e) { hist = []; }
+
+  var total   = agents.length;
+  var actifs  = agents.filter(function(a){ return a.statut === 'Actif'; }).length;
+  var susp    = agents.filter(function(a){ return a.statut === 'Suspendu'; }).length;
+  var recentR = agents.slice().sort(function(a,b){ return new Date(b.date_recrutement)-new Date(a.date_recrutement); }).slice(0,5);
+
+  // Grade counts
+  var gradeCounts = {};
+  agents.forEach(function(a){ gradeCounts[a.grade] = (gradeCounts[a.grade]||0)+1; });
+  var topGrades = Object.entries(gradeCounts).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+
+  var activityHtml = hist.length ? hist.map(function(h) {
+    var dot = typeDotClass(h.type);
+    var name = h.agent ? (h.agent.prenom + ' ' + h.agent.nom) : '—';
+    return '<div class="activity-item">' +
+      '<div class="activity-icon tl-dot ' + dot + '">' + typeIcon(h.type) + '</div>' +
+      '<div class="activity-text"><div class="activity-title">' + esc(h.titre) + '</div>' +
+      '<div class="activity-sub">' + esc(name) + ' · ' + esc(h.agent && h.agent.grade || '') + '</div></div>' +
+      '<div class="activity-date">' + fmtShort(h.date) + '</div>' +
+    '</div>';
+  }).join('') : '<div class="empty-state" style="padding:30px"><div class="empty-icon">📋</div><div class="empty-title">Aucune activité récente</div></div>';
+
+  var gradeListHtml = topGrades.map(function(g) {
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border0)">' +
+      '<span style="font-size:.85rem;color:var(--t1)">' + esc(g[0]) + '</span>' +
+      '<span class="badge badge-gold">' + g[1] + '</span></div>';
+  }).join('');
+
+  setContent(
+    '<div class="welcome-bar">' +
+      '<div><h1 style="font-size:1.5rem">Tableau de bord</h1>' +
+      '<p class="text-muted" style="margin-top:3px;font-size:.84rem">BCSO · ' + new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + '</p></div>' +
+      (canWrite() ? '<button class="btn btn-primary btn-sm" onclick="navigate(\'agents\')" style="gap:6px">👮 Ajouter un agent</button>' : '') +
+    '</div>' +
+
+    '<div class="stats-grid">' +
+      statCard('👮', 'Agents total', total) +
+      statCard('✅', 'En service', actifs, 'badge-green') +
+      statCard('⚠️', 'Suspendus', susp, 'badge-orange') +
+      statCard('📋', 'Recrutements ce mois', recentR.length) +
+    '</div>' +
+
+    '<div class="page-grid3">' +
+      '<div class="card">' +
+        '<div class="card-head"><div class="card-icon">⏱️</div><div><div class="card-title">Activité récente</div><div class="card-sub">30 DERNIERS JOURS</div></div></div>' +
+        activityHtml +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:18px">' +
+        '<div class="card">' +
+          '<div class="card-head"><div class="card-icon">🎖️</div><div><div class="card-title">Grades</div><div class="card-sub">EFFECTIFS</div></div></div>' +
+          (gradeListHtml || '<div class="empty-state" style="padding:20px"><div class="empty-title">Aucun agent</div></div>') +
+        '</div>' +
+        '<div class="card">' +
+          '<div class="card-head"><div class="card-icon">⚡</div><div><div class="card-title">Accès rapide</div></div></div>' +
+          '<div style="display:flex;flex-direction:column;gap:8px">' +
+            quickLink('👮', 'Agents', 'agents') +
+            quickLink('📚', 'Guide MDT', 'mdt') +
+            quickLink('📝', 'Disciplinaire', 'disciplinary') +
+            quickLink('📈', 'Statistiques', 'stats') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function statCard(icon, label, val, cls) {
+  return '<div class="stat-card"><div class="stat-val">' + val + '</div><div class="stat-lbl">' + label + '</div><div class="stat-icon">' + icon + '</div></div>';
+}
+function quickLink(icon, label, page) {
+  return '<button class="btn btn-ghost btn-sm" style="justify-content:flex-start;gap:10px" onclick="navigate(\'' + page + '\')">' + icon + ' ' + label + '</button>';
+}
+
+// ══ AGENTS ════════════════════════════════════════════════════════
+async function renderAgents() {
+  if (!_grades.length) _grades = await DB.getGrades();
+  var agents = await DB.getAgents(_agentFilters);
+
+  var gradeOpts = '<option value="">Tous les grades</option>' +
+    _grades.map(function(g){ return '<option value="' + esc(g.nom) + '"' + (_agentFilters.grade===g.nom?' selected':'') + '>' + esc(g.nom) + '</option>'; }).join('');
+  var uniteOpts = '<option value="">Toutes les unités</option>' +
+    ['PA','CID','SWAT','TU','PRD'].map(function(u){
+      return '<option value="' + u + '"' + (_agentFilters.unite===u?' selected':'') + '>' + u + '</option>';
+    }).join('');
+
+  var rows = agents.length ? agents.map(function(a) {
+    var unites = (a.unites||[]).map(function(u){ return unitBadge(u); }).join(' ');
+    var ppas = ppaCount(a);
+    return '<tr onclick="navigate(\'agent-profile\',{id:\'' + a.id + '\'})">' +
+      '<td class="mono text-gold">' + esc(a.matricule) + '</td>' +
+      '<td style="font-weight:600;color:var(--t0)">' + esc(a.prenom) + ' ' + esc(a.nom) + '</td>' +
+      '<td>' + gradeBadge(a.grade) + '</td>' +
+      '<td>' + (unites||'<span class="text-muted">—</span>') + '</td>' +
+      '<td><span class="badge badge-gold" style="font-size:.65rem">PPA ' + ppas + '/3</span></td>' +
+      '<td>' + statusBadge(a.statut) + '</td>' +
+      '<td onclick="event.stopPropagation()" style="white-space:nowrap">' +
+        '<button class="btn btn-ghost btn-sm" onclick="navigate(\'agent-profile\',{id:\'' + a.id + '\'})">Fiche</button>' +
+        (canWrite() ? ' <button class="btn btn-outline btn-sm" onclick="openAgentModal(\'' + a.id + '\')">Éditer</button>' : '') +
+      '</td>' +
+    '</tr>';
+  }).join('') : '<tr><td colspan="7"><div class="empty-state" style="padding:40px"><div class="empty-icon">👮</div><div class="empty-title">Aucun agent trouvé</div></div></td></tr>';
+
+  setContent(
+    '<div class="flex-between mb-20 flex-wrap gap-8">' +
+      '<div><h1 style="font-size:1.4rem">Agents</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">' + agents.length + ' agent(s) trouvé(s)</p></div>' +
+      (canWrite() ? '<button class="btn btn-primary btn-sm" onclick="openAgentModal(null)">+ Ajouter un agent</button>' : '') +
+    '</div>' +
+    '<div class="filter-bar">' +
+      '<div class="search-wrap" style="max-width:280px"><span class="search-icon">🔍</span>' +
+        '<input class="form-control search-input" placeholder="Nom, prénom, matricule…" value="' + esc(_agentFilters.search) + '" oninput="agentSearch(this.value)"></div>' +
+      '<select class="form-control" style="width:auto" onchange="agentFilter(\'grade\',this.value)">' + gradeOpts + '</select>' +
+      '<select class="form-control" style="width:auto" onchange="agentFilter(\'unite\',this.value)">' + uniteOpts + '</select>' +
+      '<div class="filter-tabs">' +
+        ftab('', 'Tous', _agentFilters.statut === '') +
+        ftab('Actif', 'Actifs', _agentFilters.statut === 'Actif') +
+        ftab('Suspendu', 'Suspendus', _agentFilters.statut === 'Suspendu') +
+        ftab('Retraité', 'Retraités', _agentFilters.statut === 'Retraité') +
+      '</div>' +
+    '</div>' +
+    '<div class="card" style="padding:0;overflow:hidden">' +
+      '<div class="table-wrap"><table>' +
+        '<thead><tr><th>MATRICULE</th><th>NOM</th><th>GRADE</th><th>UNITÉS</th><th>PPA</th><th>STATUT</th><th>ACTIONS</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table></div>' +
+    '</div>'
+  );
+}
+
+function ftab(val, label, active) {
+  return '<button class="ftab' + (active?' active':'') + '" onclick="agentFilter(\'statut\',\'' + val + '\')">' + label + '</button>';
+}
+
+var _searchTimer = null;
+function agentSearch(v) {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(function(){ _agentFilters.search = v; renderAgents(); }, 280);
+}
+function agentFilter(key, val) { _agentFilters[key] = val; renderAgents(); }
+
+// ── Agent modal (add / edit) ──────────────────────────────────────
+async function openAgentModal(id) {
+  if (!canWrite()) return;
+  if (!_grades.length) _grades = await DB.getGrades();
+  var ag = id ? await DB.getAgent(id) : null;
+  var v = ag || {};
+
+  var gradeOpts = _grades.map(function(g){
+    return '<option value="' + esc(g.nom) + '"' + (v.grade===g.nom?' selected':'') + '>' + esc(g.nom) + '</option>';
+  }).join('');
+
+  var unites = ['PA','CID','SWAT','TU','PRD'];
+  var uniteChecks = unites.map(function(u){
+    var chk = (v.unites||[]).includes(u) ? ' checked' : '';
+    return '<label class="form-check"><input type="checkbox" name="unite" value="' + u + '"' + chk + '><span class="form-check-lbl">' + u + '</span></label>';
+  }).join('');
+
+  openModal({
+    eyebrow: id ? 'MODIFIER UN AGENT' : 'NOUVEL AGENT',
+    title: id ? (v.prenom + ' ' + v.nom) : 'Ajouter un agent',
+    size: 'lg',
+    body:
+      '<div class="form-grid2">' +
+        fld('Prénom *', 'text', 'agPrenom', v.prenom) +
+        fld('Nom *', 'text', 'agNom', v.nom) +
+      '</div>' +
+      '<div class="form-grid2">' +
+        fld('Matricule *', 'text', 'agMatricule', v.matricule, 'Ex: BCSO-001') +
+        fld('Date de naissance', 'date', 'agDob', v.date_naissance) +
+      '</div>' +
+      fld('Téléphone', 'text', 'agTel', v.telephone, '+1 555 000 0000') +
+      '<div class="form-grid2">' +
+        '<div class="form-group"><label class="form-label">Grade *</label><select class="form-control" id="agGrade">' + gradeOpts + '</select></div>' +
+        '<div class="form-group"><label class="form-label">Statut</label><select class="form-control" id="agStatut">' +
+          ['Actif','Suspendu','Retraité','Archivé'].map(function(s){ return '<option' + (v.statut===s?' selected':'') + '>' + s + '</option>'; }).join('') +
+        '</select></div>' +
+      '</div>' +
+      '<div class="form-grid2">' +
+        fld('Date de recrutement', 'date', 'agRecruit', v.date_recrutement) +
+        fld('Date de dernière promotion', 'date', 'agPromo', v.date_promotion) +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">Unités</label>' +
+        '<div class="flex flex-wrap gap-12">' + uniteChecks + '</div>' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">Notes</label><textarea class="form-control" id="agNotes" rows="2">' + esc(v.notes||'') + '</textarea></div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveAgent(\'' + (id||'') + '\')">Enregistrer</button>'
+  });
+}
+
+function fld(label, type, id, val, placeholder) {
+  return '<div class="form-group"><label class="form-label">' + label + '</label>' +
+    '<input class="form-control" type="' + type + '" id="' + id + '" value="' + esc(val||'') + '"' + (placeholder?' placeholder="' + esc(placeholder) + '"':'') + '></div>';
+}
+
+async function saveAgent(id) {
+  var prenom = document.getElementById('agPrenom').value.trim();
+  var nom    = document.getElementById('agNom').value.trim();
+  var mat    = document.getElementById('agMatricule').value.trim();
+  if (!prenom || !nom || !mat) { toast('Prénom, nom et matricule sont requis.','error'); return; }
+
+  var unites = Array.from(document.querySelectorAll('input[name="unite"]:checked')).map(function(c){ return c.value; });
+  var data = {
+    prenom: prenom, nom: nom, matricule: mat,
+    date_naissance: document.getElementById('agDob').value || null,
+    telephone: document.getElementById('agTel').value.trim() || null,
+    grade: document.getElementById('agGrade').value,
+    statut: document.getElementById('agStatut').value,
+    date_recrutement: document.getElementById('agRecruit').value || null,
+    date_promotion: document.getElementById('agPromo').value || null,
+    unites: unites,
+    notes: document.getElementById('agNotes').value.trim() || null
+  };
+
+  try {
+    var res;
+    if (id) { res = await DB.updateAgent(id, data); }
+    else    { res = await DB.createAgent(data); }
+    if (res.error) throw res.error;
+    closeModal();
+    toast(id ? 'Agent modifié.' : 'Agent créé.', 'success');
+    await renderAgents();
+  } catch(err) {
+    toast(err.message || 'Erreur lors de la sauvegarde.', 'error');
+  }
+}
+
+// ══ AGENT PROFILE ══════════════════════════════════════════════════
+async function renderAgentProfile() {
+  var id = S.pd.id;
+  if (!id) { navigate('agents'); return; }
+  var [ag, hist, disc] = await Promise.all([
+    DB.getAgent(id),
+    DB.getHistory(id),
+    DB.getDisciplinary({ agentId: id })
+  ]);
+  if (!ag) { navigate('agents'); return; }
+
+  var unites = (ag.unites||[]).map(unitBadge).join(' ');
+  var ppas = [
+    { key:'ppa1', label:'PPA 1', val:ag.ppa1 },
+    { key:'ppa2', label:'PPA 2', val:ag.ppa2 },
+    { key:'ppa3', label:'PPA 3', val:ag.ppa3 }
+  ];
+  var quals = [
+    { key:'qual_pa',   label:'PA',   val:ag.qual_pa   },
+    { key:'qual_cid',  label:'CID',  val:ag.qual_cid  },
+    { key:'qual_swat', label:'SWAT', val:ag.qual_swat },
+    { key:'qual_tu',   label:'TU',   val:ag.qual_tu   },
+    { key:'qual_prd',  label:'PRD',  val:ag.qual_prd  }
+  ];
+
+  var ppaHtml = ppas.map(function(p){
+    return '<div class="ppa-item' + (p.val?' checked':'') + '">' +
+      '<div class="ppa-check">' + (p.val ? '✅' : '⬜') + '</div>' +
+      '<div class="ppa-label">' + p.label + '</div>' +
+    '</div>';
+  }).join('');
+
+  var qualHtml = quals.map(function(q){
+    return '<span class="qual-badge qual-' + q.label + (q.val?' earned':'') + '">' + q.label + '</span>';
+  }).join('');
+
+  var histHtml = hist.length ? hist.map(function(h){
+    return '<div class="timeline-item"><div class="tl-dot ' + typeDotClass(h.type) + '">' + typeIcon(h.type) + '</div>' +
+      '<div style="flex:1"><div class="tl-title">' + esc(h.titre) + '</div>' +
+      '<div class="tl-meta">' + fmt(h.date) + (h.description ? ' · ' + esc(h.description).slice(0,60) : '') + '</div></div>' +
+      (isAdmin() ? '<button class="btn btn-danger btn-sm btn-icon" onclick="delHistory(\'' + h.id + '\',\'' + id + '\')">✕</button>' : '') +
+    '</div>';
+  }).join('') : '<div class="empty-state" style="padding:30px"><div class="empty-icon">📋</div><div class="empty-title">Aucun historique</div></div>';
+
+  var discHtml = disc.length ? disc.map(function(d){
+    return '<div style="background:var(--bg2);border:1px solid rgba(231,76,60,.2);border-left:3px solid var(--red);border-radius:var(--rMd);padding:12px 16px;margin-bottom:10px">' +
+      '<div style="font-weight:600;color:var(--t0);font-size:.86rem">' + esc(d.motif) + '</div>' +
+      '<div style="font-size:.76rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace;margin-top:3px">' + fmt(d.date) + ' · Décision : ' + esc(d.decision||'En cours') + '</div>' +
+    '</div>';
+  }).join('') : '<div class="text-muted" style="font-size:.84rem;padding:10px 0">Aucun dossier disciplinaire</div>';
+
+  setContent(
+    '<button class="btn btn-ghost btn-sm mb-14" onclick="navigate(\'agents\')">← Retour</button>' +
+
+    '<div class="profile-hd">' +
+      '<div class="profile-av">👤</div>' +
+      '<div style="flex:1">' +
+        '<h1 class="profile-name">' + esc(ag.prenom) + ' ' + esc(ag.nom) + '</h1>' +
+        '<div class="profile-mat">' + esc(ag.matricule) + '</div>' +
+        '<div class="profile-meta">' + gradeBadge(ag.grade) + statusBadge(ag.statut) + unites + '</div>' +
+      '</div>' +
+      (canWrite() ?
+        '<div class="profile-actions">' +
+          '<button class="btn btn-outline btn-sm" onclick="openAgentModal(\'' + id + '\')">✏️ Modifier</button>' +
+          (isAdmin() ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">PPA / Qualif.</button>' : '') +
+        '</div>' : '') +
+    '</div>' +
+
+    '<div class="page-grid3">' +
+      '<div style="display:flex;flex-direction:column;gap:18px">' +
+
+        '<div class="card">' +
+          '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Informations</div></div></div>' +
+          infoRow('Date de naissance', fmt(ag.date_naissance)) +
+          infoRow('Téléphone', ag.telephone) +
+          infoRow('Date de recrutement', fmt(ag.date_recrutement)) +
+          infoRow('Dernière promotion', fmt(ag.date_promotion)) +
+          (ag.notes ? '<div class="divider"></div><div style="font-size:.83rem;color:var(--t2)">' + esc(ag.notes) + '</div>' : '') +
+        '</div>' +
+
+        '<div class="card">' +
+          '<div class="card-head"><div class="card-icon">📚</div><div><div class="card-title">Formations PPA</div></div></div>' +
+          '<div class="ppa-grid">' + ppaHtml + '</div>' +
+        '</div>' +
+
+        '<div class="card">' +
+          '<div class="card-head"><div class="card-icon">🏅</div><div><div class="card-title">Qualifications</div></div></div>' +
+          '<div class="qual-grid">' + qualHtml + '</div>' +
+        '</div>' +
+
+        '<div class="card">' +
+          '<div class="card-head"><div class="card-icon">📝</div><div><div class="card-title">Dossiers disciplinaires</div></div></div>' +
+          discHtml +
+          (isAdmin() ? '<button class="btn btn-danger btn-sm" style="margin-top:10px" onclick="openDiscModal(\'' + id + '\')">+ Nouveau dossier</button>' : '') +
+        '</div>' +
+      '</div>' +
+
+      '<div class="card" style="height:fit-content">' +
+        '<div class="flex-between mb-14">' +
+          '<div class="card-head" style="margin:0"><div class="card-icon">⏱️</div><div><div class="card-title">Historique</div></div></div>' +
+          (canWrite() ? '<button class="btn btn-outline btn-sm" onclick="openHistModal(\'' + id + '\')">+ Ajouter</button>' : '') +
+        '</div>' +
+        '<div class="timeline">' + histHtml + '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function infoRow(label, val) {
+  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border0)">' +
+    '<span style="font-size:.78rem;color:var(--t3)">' + esc(label) + '</span>' +
+    '<span style="font-size:.86rem;color:var(--t0)">' + esc(val||'—') + '</span>' +
+  '</div>';
+}
+
+async function openHistModal(agentId) {
+  openModal({
+    eyebrow: 'HISTORIQUE AGENT',
+    title: 'Ajouter un événement',
+    body:
+      '<div class="form-group"><label class="form-label">Type</label><select class="form-control" id="histType">' +
+        ['promotion','sanction','recompense','note'].map(function(t){
+          return '<option value="' + t + '">' + {promotion:'Promotion',sanction:'Sanction',recompense:'Récompense',note:'Note admin'}[t] + '</option>';
+        }).join('') +
+      '</select></div>' +
+      fld('Titre *', 'text', 'histTitre', '', 'Ex: Promotion Deputy II') +
+      fld('Date', 'date', 'histDate', new Date().toISOString().split('T')[0]) +
+      '<div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="histDesc" rows="2"></textarea></div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveHistory(\'' + agentId + '\')">Enregistrer</button>'
+  });
+}
+
+async function saveHistory(agentId) {
+  var titre = document.getElementById('histTitre').value.trim();
+  if (!titre) { toast('Le titre est requis.','error'); return; }
+  var data = {
+    agent_id: agentId,
+    type: document.getElementById('histType').value,
+    titre: titre,
+    date: document.getElementById('histDate').value || new Date().toISOString().split('T')[0],
+    description: document.getElementById('histDesc').value.trim() || null
+  };
+  try {
+    var r = await DB.addHistory(data);
+    if (r.error) throw r.error;
+    closeModal();
+    toast('Événement ajouté.','success');
+    await renderAgentProfile();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function delHistory(hId, agentId) {
+  if (!confirm('Supprimer cet événement ?')) return;
+  await DB.deleteHistory(hId);
+  toast('Supprimé.','info');
+  await renderAgentProfile();
+}
+
+async function openPPAModal(agentId) {
+  var ag = await DB.getAgent(agentId);
+  if (!ag) return;
+  openModal({
+    eyebrow: 'FORMATIONS & QUALIFICATIONS',
+    title: ag.prenom + ' ' + ag.nom,
+    body:
+      '<div class="form-group"><label class="form-label">Formations PPA</label>' +
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+          ppaCheck('ppaCk1','PPA 1',ag.ppa1) +
+          ppaCheck('ppaCk2','PPA 2',ag.ppa2) +
+          ppaCheck('ppaCk3','PPA 3',ag.ppa3) +
+        '</div>' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">Qualifications</label>' +
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+          ppaCheck('qkPA','Police Academy (PA)',ag.qual_pa) +
+          ppaCheck('qkCID','CID',ag.qual_cid) +
+          ppaCheck('qkSWAT','SWAT',ag.qual_swat) +
+          ppaCheck('qkTU','Traffic Unit (TU)',ag.qual_tu) +
+          ppaCheck('qkPRD','PRD',ag.qual_prd) +
+        '</div>' +
+      '</div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="savePPAModal(\'' + agentId + '\')">Enregistrer</button>'
+  });
+}
+
+function ppaCheck(id, label, checked) {
+  return '<label class="form-check"><input type="checkbox" id="' + id + '"' + (checked?' checked':'') + '><span class="form-check-lbl">' + label + '</span></label>';
+}
+
+async function savePPAModal(agentId) {
+  var data = {
+    ppa1: document.getElementById('ppaCk1').checked,
+    ppa2: document.getElementById('ppaCk2').checked,
+    ppa3: document.getElementById('ppaCk3').checked,
+    qual_pa:   document.getElementById('qkPA').checked,
+    qual_cid:  document.getElementById('qkCID').checked,
+    qual_swat: document.getElementById('qkSWAT').checked,
+    qual_tu:   document.getElementById('qkTU').checked,
+    qual_prd:  document.getElementById('qkPRD').checked
+  };
+  try {
+    var r = await DB.updateAgent(agentId, data);
+    if (r.error) throw r.error;
+    closeModal();
+    toast('Formations mises à jour.','success');
+    await renderAgentProfile();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ══ GRADES ═════════════════════════════════════════════════════════
+async function renderGrades() {
+  _grades = await DB.getGrades();
+  var agents = await DB.getAgents();
+
+  var gradeCounts = {};
+  agents.forEach(function(a){ gradeCounts[a.grade] = (gradeCounts[a.grade]||0)+1; });
+
+  var rows = _grades.length ? _grades.map(function(g, i){
+    return '<tr>' +
+      '<td class="mono text-gold" style="width:40px">' + g.ordre + '</td>' +
+      '<td style="font-weight:600;color:var(--t0)">' + esc(g.nom) + '</td>' +
+      '<td class="mono">' + esc(g.abrev||'—') + '</td>' +
+      '<td>' + (gradeCounts[g.nom]||0) + ' agent(s)</td>' +
+      (isAdmin() ?
+        '<td onclick="event.stopPropagation()" style="white-space:nowrap">' +
+          '<button class="btn btn-ghost btn-sm" onclick="openGradeModal(\'' + g.id + '\')">✏️</button>' +
+          ' <button class="btn btn-danger btn-sm" onclick="deleteGrade(\'' + g.id + '\',\'' + esc(g.nom) + '\')">✕</button>' +
+        '</td>' : '') +
+    '</tr>';
+  }).join('') : '<tr><td colspan="5"><div class="empty-state" style="padding:30px"><div class="empty-icon">🎖️</div><div class="empty-title">Aucun grade</div></div></td></tr>';
+
+  setContent(
+    '<div class="flex-between mb-20 flex-wrap gap-8">' +
+      '<div><h1 style="font-size:1.4rem">Grades</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Hiérarchie du BCSO</p></div>' +
+      (isAdmin() ? '<button class="btn btn-primary btn-sm" onclick="openGradeModal(null)">+ Ajouter un grade</button>' : '') +
+    '</div>' +
+    '<div class="card" style="padding:0;overflow:hidden"><div class="table-wrap"><table>' +
+      '<thead><tr><th>#</th><th>NOM</th><th>ABRÉVIATION</th><th>EFFECTIF</th>' + (isAdmin() ? '<th>ACTIONS</th>' : '') + '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table></div></div>'
+  );
+}
+
+function openGradeModal(id) {
+  var g = id ? _grades.find(function(x){ return x.id==id; }) : null;
+  var v = g || {};
+  openModal({
+    eyebrow: id ? 'MODIFIER UN GRADE' : 'NOUVEAU GRADE',
+    title: id ? v.nom : 'Ajouter un grade',
+    size: 'sm',
+    body:
+      fld('Nom du grade *', 'text', 'gNom', v.nom, 'Ex: Deputy I') +
+      '<div class="form-grid2">' +
+        fld('Abréviation', 'text', 'gAbrev', v.abrev, 'Ex: DEP I') +
+        fld('Ordre hiérarchique *', 'number', 'gOrdre', v.ordre, '1') +
+      '</div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveGrade(\'' + (id||'') + '\')">Enregistrer</button>'
+  });
+}
+
+async function saveGrade(id) {
+  var nom = document.getElementById('gNom').value.trim();
+  if (!nom) { toast('Le nom est requis.','error'); return; }
+  var data = { nom: nom, abrev: document.getElementById('gAbrev').value.trim()||null, ordre: parseInt(document.getElementById('gOrdre').value)||(_grades.length+1) };
+  try {
+    var r = id ? await DB.updateGrade(id, data) : await DB.createGrade(data);
+    if (r.error) throw r.error;
+    closeModal(); toast('Grade enregistré.','success'); _grades = await DB.getGrades(); await renderGrades();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function deleteGrade(id, nom) {
+  if (!confirm('Supprimer le grade "' + nom + '" ?')) return;
+  var r = await DB.deleteGrade(id);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  toast('Grade supprimé.','info'); _grades = await DB.getGrades(); await renderGrades();
+}
+
+// ══ UNITS ══════════════════════════════════════════════════════════
+async function renderUnits() {
+  var [units, agents] = await Promise.all([DB.getUnits(), DB.getAgents()]);
+
+  var html = units.map(function(u) {
+    var members = agents.filter(function(a){ return (a.unites||[]).includes(u.code); });
+    var colors = { PA:'blue', CID:'orange', SWAT:'red', TU:'green', PRD:'gold' };
+    var cls = 'badge-' + (colors[u.code]||'gray');
+    return '<div class="card">' +
+      '<div class="card-head">' +
+        '<div class="card-icon"><span class="badge ' + cls + '" style="font-size:.9rem;padding:4px 10px">' + esc(u.code) + '</span></div>' +
+        '<div style="flex:1"><div class="card-title">' + esc(u.nom) + '</div><div class="card-sub">' + members.length + ' MEMBRE(S)</div></div>' +
+        (isAdmin() ? '<button class="btn btn-ghost btn-sm" onclick="openUnitModal(\'' + u.id + '\')">✏️</button>' : '') +
+      '</div>' +
+      '<p style="font-size:.84rem;color:var(--t2);margin-bottom:14px">' + esc(u.description||'—') + '</p>' +
+      '<div class="divider"></div>' +
+      '<div style="font-size:.76rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace;margin-bottom:8px">CONDITIONS D\'ACCÈS</div>' +
+      '<p style="font-size:.82rem;color:var(--t2)">' + esc(u.conditions_acces||'—') + '</p>' +
+      (members.length ? '<div class="divider"></div><div style="font-size:.76rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace;margin-bottom:8px">MEMBRES</div><div style="display:flex;flex-wrap:wrap;gap:6px">' +
+        members.map(function(a){ return '<span class="badge badge-gray" style="cursor:pointer" onclick="navigate(\'agent-profile\',{id:\'' + a.id + '\'})">' + esc(a.prenom+' '+a.nom) + '</span>'; }).join('') + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  setContent(
+    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Unités</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Divisions spécialisées du BCSO</p></div></div>' +
+    '<div class="page-grid2">' + html + '</div>'
+  );
+}
+
+function openUnitModal(id) {
+  openModal({
+    eyebrow: 'MODIFIER L\'UNITÉ',
+    title: 'Configuration de l\'unité',
+    size: 'sm',
+    body:
+      fld('Description', 'text', 'uDesc', '') +
+      '<div class="form-group"><label class="form-label">Conditions d\'accès</label><textarea class="form-control" id="uCond" rows="3"></textarea></div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveUnit(\'' + id + '\')">Enregistrer</button>'
+  });
+  // pre-fill after modal is open
+  DB.getUnits().then(function(units) {
+    var u = units.find(function(x){ return x.id==id; });
+    if (u) {
+      document.getElementById('uDesc').value = u.description||'';
+      document.getElementById('uCond').value = u.conditions_acces||'';
+    }
+  });
+}
+
+async function saveUnit(id) {
+  var data = {
+    description: document.getElementById('uDesc').value.trim()||null,
+    conditions_acces: document.getElementById('uCond').value.trim()||null
+  };
+  try {
+    var r = await DB.updateUnit(id, data);
+    if (r.error) throw r.error;
+    closeModal(); toast('Unité mise à jour.','success'); await renderUnits();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ══ MDT ════════════════════════════════════════════════════════════
+async function renderMDT() {
+  _mdtCats = await DB.getMdtCategories();
+  _mdtSelPage = null;
+
+  setContent(
+    '<div class="flex-between mb-20 flex-wrap gap-8">' +
+      '<div><h1 style="font-size:1.4rem">Guide MDT</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Documentation interne du BCSO</p></div>' +
+      (isAdmin() ? '<button class="btn btn-primary btn-sm" onclick="openMdtCatModal(null,null)">+ Catégorie</button>' : '') +
+    '</div>' +
+    '<div class="mdt-layout">' +
+      '<aside class="mdt-sidebar">' +
+        '<div id="mdtTree"></div>' +
+      '</aside>' +
+      '<div class="mdt-main" id="mdtMain">' +
+        '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">Sélectionnez une page dans le menu de gauche</div></div>' +
+      '</div>' +
+    '</div>'
+  );
+  renderMdtTree();
+}
+
+function renderMdtTree() {
+  var roots = _mdtCats.filter(function(c){ return !c.parent_id; });
+  var byParent = {};
+  _mdtCats.filter(function(c){ return c.parent_id; }).forEach(function(c){
+    if (!byParent[c.parent_id]) byParent[c.parent_id] = [];
+    byParent[c.parent_id].push(c);
+  });
+
+  function renderNode(cat, depth) {
+    var isOpen = _mdtSelCat === cat.id;
+    var indent = 'padding-left:' + (8 + depth*14) + 'px';
+    var sub = (byParent[cat.id]||[]).map(function(c){ return renderNode(c, depth+1); }).join('');
+    return '<div>' +
+      '<div class="mdt-cat' + (isOpen?' open':'') + '" style="' + indent + '" onclick="toggleMdtCat(\'' + cat.id + '\')">' +
+        '<span>' + (isOpen ? '📂' : (cat.emoji||'📁')) + '</span>' +
+        '<span style="flex:1">' + esc(cat.nom) + '</span>' +
+        (isAdmin() ?
+          '<span onclick="event.stopPropagation();openMdtCatMenu(\'' + cat.id + '\')" style="color:var(--t3);cursor:pointer;padding:0 2px;font-size:.8rem">⋮</span>'
+          : '') +
+      '</div>' +
+      '<div id="mdtPages-' + cat.id + '" style="display:' + (isOpen?'block':'none') + '"></div>' +
+      sub +
+    '</div>';
+  }
+
+  var tree = document.getElementById('mdtTree');
+  if (!tree) return;
+  if (!roots.length) {
+    tree.innerHTML = '<p style="color:var(--t3);font-size:.8rem;text-align:center;padding:20px 8px">Aucune catégorie.<br>' +
+      (isAdmin() ? 'Cliquez sur "+ Catégorie" pour commencer.' : '') + '</p>';
+    return;
+  }
+  tree.innerHTML = roots.map(function(c){ return renderNode(c,0); }).join('');
+  if (_mdtSelCat) loadMdtCatPages(_mdtSelCat);
+}
+
+async function toggleMdtCat(catId) {
+  if (_mdtSelCat === catId) { _mdtSelCat = null; renderMdtTree(); return; }
+  _mdtSelCat = catId;
+  renderMdtTree();
+  await loadMdtCatPages(catId);
+}
+
+async function loadMdtCatPages(catId) {
+  var pages = await DB.getMdtPages(catId);
+  var el = document.getElementById('mdtPages-' + catId);
+  if (!el) return;
+  el.innerHTML = pages.map(function(p){
+    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openMdtPage(\'' + p.id + '\')">' +
+      '📄 ' + esc(p.titre) + '</div>';
+  }).join('') +
+  (isAdmin() ? '<div class="mdt-page-item" onclick="openMdtNewPage(\'' + catId + '\')" style="color:var(--gold);opacity:.6">+ Nouvelle page</div>' : '');
+}
+
+async function openMdtPage(pageId) {
+  _mdtSelPage = pageId;
+  // update tree active state
+  document.querySelectorAll('.mdt-page-item').forEach(function(el){
+    el.classList.toggle('active', el.textContent.includes && el.getAttribute && false);
+  });
+  var page = await DB.getMdtPage(pageId);
+  if (!page) return;
+
+  var main = document.getElementById('mdtMain');
+  if (!main) return;
+  main.innerHTML =
+    '<div class="card mb-14">' +
+      '<div class="flex-between flex-wrap gap-8">' +
+        '<div><h2 style="font-size:1.3rem">' + esc(page.titre) + '</h2>' +
+        '<div class="mono" style="font-size:.64rem;color:var(--t3);margin-top:3px">Modifié le ' + fmt(page.updated_at) + '</div></div>' +
+        (isAdmin() ? '<div style="display:flex;gap:8px">' +
+          '<button class="btn btn-outline btn-sm" onclick="editMdtPage(\'' + pageId + '\')">✏️ Modifier</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="delMdtPage(\'' + pageId + '\')">Supprimer</button>' +
+        '</div>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="card ql-view" style="min-height:300px;font-size:.9rem;line-height:1.7;color:var(--t1)">' +
+      (page.contenu || '<p class="text-muted">Cette page est vide. Cliquez sur "Modifier" pour ajouter du contenu.</p>') +
+    '</div>';
+
+  // re-highlight active page
+  document.querySelectorAll('.mdt-page-item').forEach(function(el){
+    el.classList.remove('active');
+  });
+}
+
+async function editMdtPage(pageId) {
+  var page = await DB.getMdtPage(pageId);
+  if (!page) return;
+
+  var main = document.getElementById('mdtMain');
+  main.innerHTML =
+    '<div class="card mb-14">' +
+      '<div class="flex-between flex-wrap gap-8">' +
+        '<input class="form-control" id="mdtEditTitle" value="' + esc(page.titre) + '" style="font-size:1.1rem;font-weight:700;max-width:400px">' +
+        '<div style="display:flex;gap:8px">' +
+          '<button class="btn btn-ghost btn-sm" onclick="openMdtPage(\'' + pageId + '\')">Annuler</button>' +
+          '<button class="btn btn-primary btn-sm" onclick="saveMdtPage(\'' + pageId + '\')">💾 Sauvegarder</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="mdtEditor"></div>';
+
+  _quill = new Quill('#mdtEditor', {
+    theme: 'snow',
+    modules: { toolbar: [[{'header':[1,2,3,false]}],'bold','italic','underline','strike',
+      [{'list':'ordered'},{'list':'bullet'}],'blockquote','code-block','link','image',{'color':[]},{'align':[]}] }
+  });
+  if (page.contenu) _quill.root.innerHTML = page.contenu;
+}
+
+async function saveMdtPage(pageId) {
+  var titre = document.getElementById('mdtEditTitle').value.trim();
+  if (!titre) { toast('Le titre est requis.','error'); return; }
+  var contenu = _quill ? _quill.root.innerHTML : '';
+  try {
+    var r = await DB.updateMdtPage(pageId, { titre: titre, contenu: contenu });
+    if (r.error) throw r.error;
+    toast('Page sauvegardée.','success');
+    await openMdtPage(pageId);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function delMdtPage(pageId) {
+  if (!confirm('Supprimer cette page ?')) return;
+  var r = await DB.deleteMdtPage(pageId);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  _mdtSelPage = null;
+  toast('Page supprimée.','info');
+  var main = document.getElementById('mdtMain');
+  if (main) main.innerHTML = '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">Page supprimée</div></div>';
+  await loadMdtCatPages(_mdtSelCat);
+}
+
+async function openMdtNewPage(catId) {
+  openModal({
+    eyebrow: 'NOUVELLE PAGE MDT',
+    title: 'Créer une page',
+    size: 'sm',
+    body: fld('Titre *', 'text', 'npTitre', '', 'Ex: Code pénal — Art. 100'),
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="createMdtPage(\'' + catId + '\')">Créer</button>'
+  });
+}
+
+async function createMdtPage(catId) {
+  var titre = document.getElementById('npTitre').value.trim();
+  if (!titre) { toast('Titre requis.','error'); return; }
+  try {
+    var r = await DB.createMdtPage({ categorie_id: catId, titre: titre, contenu: '', ordre: 0 });
+    if (r.error) throw r.error;
+    closeModal(); toast('Page créée.','success');
+    await loadMdtCatPages(catId);
+    if (r.data) await openMdtPage(r.data.id);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+function openMdtCatModal(parentId, editId) {
+  openModal({
+    eyebrow: editId ? 'MODIFIER LA CATÉGORIE' : 'NOUVELLE CATÉGORIE',
+    title: editId ? 'Modifier' : 'Ajouter une catégorie',
+    size: 'sm',
+    body:
+      fld('Nom *', 'text', 'mcNom', '') +
+      '<div class="form-grid2">' +
+        fld('Emoji', 'text', 'mcEmoji', parentId ? '📄' : '📁', '📁') +
+        fld('Ordre', 'number', 'mcOrdre', '0') +
+      '</div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveMdtCat(\'' + (parentId||'') + '\',\'' + (editId||'') + '\')">Enregistrer</button>'
+  });
+}
+
+function openMdtCatMenu(catId) {
+  var cat = _mdtCats.find(function(c){ return c.id === catId; });
+  var nom = cat ? cat.nom : '';
+  openModal({
+    eyebrow: 'CATÉGORIE MDT',
+    title: esc(nom),
+    size: 'sm',
+    body: '<div style="display:flex;flex-direction:column;gap:8px">' +
+      '<button class="btn btn-outline" onclick="openMdtCatEditModal(\'' + catId + '\')">✏️ Renommer</button>' +
+      '<button class="btn btn-outline" onclick="openMdtCatModal(\'' + catId + '\',null)">➕ Sous-catégorie</button>' +
+      '<button class="btn btn-danger" onclick="delMdtCat(\'' + catId + '\')">🗑️ Supprimer</button>' +
+    '</div>',
+    footer: ''
+  });
+}
+
+function openMdtCatEditModal(catId) {
+  var cat = _mdtCats.find(function(c){ return c.id === catId; });
+  var nom = cat ? cat.nom : '';
+  closeModal();
+  setTimeout(function() {
+    openModal({
+      eyebrow: 'RENOMMER',
+      title: 'Renommer la catégorie',
+      size: 'sm',
+      body: fld('Nouveau nom *', 'text', 'rcNom', nom),
+      footer:
+        '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+        '<button class="btn btn-primary" onclick="renameMdtCat(\'' + catId + '\')">Renommer</button>'
+    });
+  }, 180);
+}
+
+async function renameMdtCat(catId) {
+  var nom = document.getElementById('rcNom').value.trim();
+  if (!nom) { toast('Nom requis.','error'); return; }
+  var r = await DB.updateMdtCategory(catId, { nom: nom });
+  if (r.error) { toast(r.error.message,'error'); return; }
+  closeModal(); toast('Catégorie renommée.','success');
+  _mdtCats = await DB.getMdtCategories();
+  renderMdtTree();
+}
+
+async function saveMdtCat(parentId, editId) {
+  var nom = document.getElementById('mcNom').value.trim();
+  if (!nom) { toast('Nom requis.','error'); return; }
+  var data = { nom: nom, emoji: document.getElementById('mcEmoji').value.trim()||'📁', ordre: parseInt(document.getElementById('mcOrdre').value)||0 };
+  if (parentId) data.parent_id = parentId;
+  try {
+    var r = await DB.createMdtCategory(data);
+    if (r.error) throw r.error;
+    closeModal(); toast('Catégorie créée.','success');
+    _mdtCats = await DB.getMdtCategories();
+    renderMdtTree();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function delMdtCat(catId) {
+  var cat = _mdtCats.find(function(c){ return c.id === catId; });
+  var nom = cat ? cat.nom : 'cette catégorie';
+  if (!confirm('Supprimer la catégorie "' + nom + '" et toutes ses pages ?')) return;
+  var r = await DB.deleteMdtCategory(catId);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  closeModal(); toast('Catégorie supprimée.','info');
+  _mdtSelCat = null; _mdtSelPage = null;
+  _mdtCats = await DB.getMdtCategories();
+  renderMdtTree();
+}
+
+// ══ DISCIPLINARY ═══════════════════════════════════════════════════
+async function renderDisciplinary() {
+  var search = S.pd.search || '';
+  var disc = await DB.getDisciplinary({ search: search });
+
+  var cards = disc.length ? disc.map(function(d) {
+    var agent = d.agent ? (d.agent.prenom + ' ' + d.agent.nom + ' · ' + d.agent.grade) : '—';
+    return '<div style="background:var(--bgCard);border:1px solid var(--border0);border-left:3px solid var(--red);border-radius:var(--rMd);padding:16px 20px;display:flex;align-items:flex-start;gap:16px">' +
+      '<div style="flex:1">' +
+        '<div style="font-weight:600;color:var(--t0);margin-bottom:4px">' + esc(d.motif) + '</div>' +
+        '<div style="font-size:.8rem;color:var(--t2);margin-bottom:8px">' + esc(agent) + '</div>' +
+        (d.description ? '<div style="font-size:.82rem;color:var(--t2);margin-bottom:6px">' + esc(d.description) + '</div>' : '') +
+        '<div style="font-size:.73rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace">' +
+          fmt(d.date) + (d.decision ? ' · Décision : ' + esc(d.decision) : ' · En cours') +
+        '</div>' +
+      '</div>' +
+      (isAdmin() ?
+        '<div style="display:flex;gap:6px;flex-shrink:0">' +
+          '<button class="btn btn-ghost btn-sm" onclick="openDiscModal(null,\'' + d.id + '\')">✏️</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="deleteDisc(\'' + d.id + '\')">✕</button>' +
+        '</div>' : '') +
+    '</div>';
+  }).join('') : '<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">Aucun dossier disciplinaire</div></div>';
+
+  setContent(
+    '<div class="flex-between mb-20 flex-wrap gap-8">' +
+      '<div><h1 style="font-size:1.4rem">Dossiers disciplinaires</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">' + disc.length + ' dossier(s)</p></div>' +
+      (isAdmin() ? '<button class="btn btn-primary btn-sm" onclick="openDiscModal(null,null)">+ Nouveau dossier</button>' : '') +
+    '</div>' +
+    '<div class="filter-bar"><div class="search-wrap"><span class="search-icon">🔍</span>' +
+      '<input class="form-control search-input" placeholder="Rechercher par motif…" value="' + esc(search) + '" oninput="discSearch(this.value)">' +
+    '</div></div>' +
+    '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div>'
+  );
+}
+
+var _discTimer = null;
+function discSearch(v) {
+  clearTimeout(_discTimer);
+  _discTimer = setTimeout(function(){ S.pd.search = v; renderDisciplinary(); }, 280);
+}
+
+async function openDiscModal(agentId, discId) {
+  var agents = await DB.getAgents({ statut: 'Actif' });
+  var existing = null;
+  if (discId) {
+    var all = await DB.getDisciplinary();
+    existing = all.find(function(d){ return d.id === discId; });
+  }
+  var v = existing || {};
+
+  var agOpts = agents.map(function(a){
+    var sel = (agentId && a.id===agentId) || (v.agent_id && a.id===v.agent_id) ? ' selected' : '';
+    return '<option value="' + a.id + '"' + sel + '>' + esc(a.prenom+' '+a.nom+' ('+a.matricule+')') + '</option>';
+  }).join('');
+
+  openModal({
+    eyebrow: discId ? 'MODIFIER LE DOSSIER' : 'NOUVEAU DOSSIER DISCIPLINAIRE',
+    title: discId ? 'Modifier' : 'Créer un dossier',
+    body:
+      '<div class="form-group"><label class="form-label">Agent concerné *</label><select class="form-control" id="dAgent"><option value="">Sélectionner…</option>' + agOpts + '</select></div>' +
+      fld('Motif *', 'text', 'dMotif', v.motif) +
+      '<div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="dDesc" rows="3">' + esc(v.description||'') + '</textarea></div>' +
+      fld('Date', 'date', 'dDate', v.date || new Date().toISOString().split('T')[0]) +
+      fld('Décision', 'text', 'dDecision', v.decision, 'Ex: Avertissement, Suspension 48h…'),
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveDisc(\'' + (discId||'') + '\')">Enregistrer</button>'
+  });
+}
+
+async function saveDisc(discId) {
+  var agentId = document.getElementById('dAgent').value;
+  var motif   = document.getElementById('dMotif').value.trim();
+  if (!agentId || !motif) { toast('Agent et motif requis.','error'); return; }
+  var data = {
+    agent_id: agentId,
+    motif: motif,
+    description: document.getElementById('dDesc').value.trim()||null,
+    date: document.getElementById('dDate').value || new Date().toISOString().split('T')[0],
+    decision: document.getElementById('dDecision').value.trim()||null
+  };
+  try {
+    var r = discId ? await DB.updateDisciplinary(discId, data) : await DB.createDisciplinary(data);
+    if (r.error) throw r.error;
+    closeModal(); toast('Dossier enregistré.','success'); await renderDisciplinary();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function deleteDisc(id) {
+  if (!confirm('Supprimer ce dossier ?')) return;
+  var r = await DB.deleteDisciplinary(id);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  toast('Dossier supprimé.','info'); await renderDisciplinary();
+}
+
+// ══ STATS ══════════════════════════════════════════════════════════
+async function renderStats() {
+  var { agents, recentHist, recentDisc } = await DB.getStats();
+
+  var total = agents.length;
+  var actifs = agents.filter(function(a){ return a.statut==='Actif'; }).length;
+  var ppa1c = agents.filter(function(a){ return a.ppa1; }).length;
+  var ppa2c = agents.filter(function(a){ return a.ppa2; }).length;
+  var ppa3c = agents.filter(function(a){ return a.ppa3; }).length;
+  var sanctions = recentHist.filter(function(h){ return h.type==='sanction'; }).length;
+  var promotions = recentHist.filter(function(h){ return h.type==='promotion'; }).length;
+
+  var gradeCounts = {};
+  agents.forEach(function(a){ gradeCounts[a.grade] = (gradeCounts[a.grade]||0)+1; });
+
+  var unitCounts = { PA:0, CID:0, SWAT:0, TU:0, PRD:0 };
+  agents.forEach(function(a){ (a.unites||[]).forEach(function(u){ if(unitCounts[u]!==undefined) unitCounts[u]++; }); });
+
+  setContent(
+    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Statistiques</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Vue d\'ensemble du BCSO</p></div></div>' +
+
+    '<div class="stats-grid mb-20">' +
+      statCard('👮', 'Agents total', total) +
+      statCard('✅', 'Actifs', actifs) +
+      statCard('📚', 'PPA 3 validé', ppa3c) +
+      statCard('⚠️', 'Sanctions (30j)', sanctions) +
+      statCard('🎖️', 'Promotions (30j)', promotions) +
+      statCard('📝', 'Dossiers (30j)', recentDisc.length) +
+    '</div>' +
+
+    '<div class="page-grid2">' +
+      '<div class="card"><div class="card-head"><div class="card-icon">🎖️</div><div><div class="card-title">Répartition par grade</div></div></div><div class="chart-wrap"><canvas id="chartGrades"></canvas></div></div>' +
+      '<div class="card"><div class="card-head"><div class="card-icon">🚔</div><div><div class="card-title">Effectifs par unité</div></div></div><div class="chart-wrap"><canvas id="chartUnits"></canvas></div></div>' +
+    '</div>' +
+
+    '<div class="card" style="margin-top:18px">' +
+      '<div class="card-head"><div class="card-icon">📚</div><div><div class="card-title">Formations PPA</div></div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">' +
+        ppaStatCard('PPA 1', ppa1c, total) +
+        ppaStatCard('PPA 2', ppa2c, total) +
+        ppaStatCard('PPA 3', ppa3c, total) +
+      '</div>' +
+    '</div>'
+  );
+
+  // Charts
+  var gradeLabels = Object.keys(gradeCounts);
+  var gradeData   = Object.values(gradeCounts);
+  var colors = ['#C9A84C','#E4C870','#8A6B1A','#6B7C3C','#A09060','#D4B060','#7A8B4A','#9B7A2A','#B89040','#5A6B30','#E8D888','#C0A040'];
+
+  var ctxG = document.getElementById('chartGrades');
+  if (ctxG) {
+    _charts.grades = new Chart(ctxG, {
+      type: 'doughnut',
+      data: { labels: gradeLabels, datasets: [{ data: gradeData, backgroundColor: colors, borderWidth: 1, borderColor: '#111318' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position:'right', labels:{ color:'#8C8368', font:{size:11} } } } }
+    });
+  }
+  var ctxU = document.getElementById('chartUnits');
+  if (ctxU) {
+    _charts.units = new Chart(ctxU, {
+      type: 'bar',
+      data: { labels: Object.keys(unitCounts), datasets: [{ data: Object.values(unitCounts), backgroundColor: ['rgba(59,130,246,.5)','rgba(245,158,11,.5)','rgba(231,76,60,.5)','rgba(76,175,80,.5)','rgba(201,168,76,.5)'], borderRadius: 4, borderWidth: 0 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display:false } }, scales: { x:{ ticks:{ color:'#8C8368' }, grid:{ color:'rgba(201,168,76,.06)' } }, y:{ ticks:{ color:'#8C8368', stepSize:1 }, grid:{ color:'rgba(201,168,76,.06)' } } } }
+    });
+  }
+}
+
+function ppaStatCard(label, count, total) {
+  var pct = total ? Math.round(count/total*100) : 0;
+  return '<div style="background:var(--bg2);border:1px solid var(--border0);border-radius:var(--rMd);padding:16px;text-align:center">' +
+    '<div style="font-family:\'Rajdhani\',sans-serif;font-size:1.8rem;font-weight:700;color:var(--gold)">' + count + '</div>' +
+    '<div style="font-size:.7rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace;margin-bottom:8px">' + label + '</div>' +
+    '<div style="background:var(--border0);border-radius:3px;height:4px;overflow:hidden">' +
+      '<div style="background:var(--gold);height:100%;width:' + pct + '%;border-radius:3px"></div>' +
+    '</div>' +
+    '<div style="font-size:.7rem;color:var(--t3);margin-top:4px">' + pct + '%</div>' +
+  '</div>';
+}
+
+// ══ SEARCH ════════════════════════════════════════════════════════
+async function renderSearch() {
+  var q = S.pd.q || '';
+  setContent(
+    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Recherche globale</h1></div></div>' +
+    '<div class="search-wrap mb-20" style="max-width:600px"><span class="search-icon" style="font-size:1.1rem">🔍</span>' +
+      '<input class="form-control search-input" id="globalSearchInput" placeholder="Rechercher agents, grades, dossiers, MDT…" value="' + esc(q) + '" oninput="globalSearch(this.value)" style="font-size:1rem;padding:13px 13px 13px 38px">' +
+    '</div>' +
+    '<div id="searchResults">' + (q ? '' : '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">Tapez pour rechercher…</div></div>') + '</div>'
+  );
+  if (q) await doSearch(q);
+  var input = document.getElementById('globalSearchInput');
+  if (input) input.focus();
+}
+
+var _searchGTimer = null;
+function globalSearch(v) {
+  clearTimeout(_searchGTimer);
+  _searchGTimer = setTimeout(function(){ S.pd.q = v; doSearch(v); }, 250);
+}
+
+async function doSearch(q) {
+  var el = document.getElementById('searchResults');
+  if (!el) return;
+  if (!q || q.length < 2) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">Tapez au moins 2 caractères</div></div>';
+    return;
+  }
+  el.innerHTML = '<div class="loader-block" style="padding:30px"><div class="spinner"></div></div>';
+  var { agents, mdt, disc } = await DB.search(q);
+
+  var html = '';
+  if (agents.length) {
+    html += '<div class="card mb-14"><div class="card-head"><div class="card-icon">👮</div><div><div class="card-title">Agents</div><div class="card-sub">' + agents.length + ' RÉSULTAT(S)</div></div></div>' +
+      agents.map(function(a){ return '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border0);cursor:pointer" onclick="navigate(\'agent-profile\',{id:\'' + a.id + '\'})">' +
+        '<span class="mono text-gold">' + esc(a.matricule) + '</span>' +
+        '<span style="font-weight:600;color:var(--t0);flex:1">' + esc(a.prenom+' '+a.nom) + '</span>' +
+        gradeBadge(a.grade) + statusBadge(a.statut) +
+      '</div>'; }).join('') + '</div>';
+  }
+  if (mdt.length) {
+    html += '<div class="card mb-14"><div class="card-head"><div class="card-icon">📚</div><div><div class="card-title">Guide MDT</div><div class="card-sub">' + mdt.length + ' PAGE(S)</div></div></div>' +
+      mdt.map(function(p){ return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border0);cursor:pointer;color:var(--t0)" onclick="openMdtPageFromSearch(\'' + p.categorie_id + '\',\'' + p.id + '\')">' +
+        '<span>📄</span><span style="flex:1">' + esc(p.titre) + '</span><span class="text-muted" style="font-size:.78rem">MDT →</span>' +
+      '</div>'; }).join('') + '</div>';
+  }
+  if (disc.length) {
+    html += '<div class="card"><div class="card-head"><div class="card-icon">📝</div><div><div class="card-title">Dossiers disciplinaires</div><div class="card-sub">' + disc.length + ' DOSSIER(S)</div></div></div>' +
+      disc.map(function(d){ return '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border0)">' +
+        '<span style="flex:1;color:var(--t0)">' + esc(d.motif) + '</span>' +
+        '<span style="font-size:.78rem;color:var(--t2)">' + (d.agent?esc(d.agent.prenom+' '+d.agent.nom):'—') + '</span>' +
+        '<span class="mono" style="font-size:.72rem;color:var(--t3)">' + fmt(d.date) + '</span>' +
+      '</div>'; }).join('') + '</div>';
+  }
+
+  el.innerHTML = html || '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">Aucun résultat pour "' + esc(q) + '"</div></div>';
+}
+
+async function openMdtPageFromSearch(catId, pageId) {
+  _mdtSelCat = catId;
+  _mdtSelPage = pageId;
+  await navigate('mdt');
+  await openMdtPage(pageId);
+}
+
+// ══ SETTINGS ══════════════════════════════════════════════════════
+async function renderSettings() {
+  var appUsers = isAdmin() ? await DB.getAppUsers() : [];
+  var me = S.appUser;
+  var email = S.user ? S.user.email : '—';
+
+  var usersHtml = '';
+  if (isAdmin() && appUsers.length) {
+    usersHtml = '<div class="card mt-18">' +
+      '<div class="card-head"><div class="card-icon">👥</div><div><div class="card-title">Utilisateurs</div><div class="card-sub">GESTION DES ACCÈS</div></div></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>NOM</th><th>PRÉNOM</th><th>RÔLE</th><th>ACTIONS</th></tr></thead><tbody>' +
+      appUsers.map(function(u) {
+        return '<tr><td>' + esc(u.nom) + '</td><td>' + esc(u.prenom) + '</td>' +
+          '<td>' + roleBadge(u.app_role) + '</td>' +
+          '<td><select class="form-control" style="width:auto" onchange="changeRole(\'' + u.id + '\',this.value)">' +
+            ['admin','academy','agent'].map(function(r){ return '<option value="' + r + '"' + (u.app_role===r?' selected':'') + '>' + r + '</option>'; }).join('') +
+          '</select></td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+    '</div>';
+  }
+
+  setContent(
+    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Paramètres</h1></div></div>' +
+    '<div class="card">' +
+      '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Mon compte</div></div></div>' +
+      infoRow('Email', email) +
+      infoRow('Nom', me ? (me.prenom + ' ' + me.nom) : '—') +
+      infoRow('Rôle', me ? me.app_role : 'agent') +
+    '</div>' +
+    '<div class="card" style="margin-top:18px">' +
+      '<div class="card-head"><div class="card-icon">🔒</div><div><div class="card-title">Sécurité</div></div></div>' +
+      '<p class="text-muted" style="font-size:.84rem;margin-bottom:14px">Pour modifier votre mot de passe, contactez l\'administrateur ou utilisez le portail Supabase.</p>' +
+      '<button class="btn btn-danger btn-sm" onclick="doLogout()">⏻ Se déconnecter</button>' +
+    '</div>' +
+    (isAdmin() ? '<div class="card" style="margin-top:18px"><div class="card-head"><div class="card-icon">ℹ️</div><div><div class="card-title">Créer un compte</div></div></div>' +
+      '<p class="text-muted" style="font-size:.84rem">Pour inviter un nouvel utilisateur : allez sur <strong>Supabase Dashboard → Authentication → Users → Invite</strong>, entrez l\'e-mail de la personne. Elle recevra un lien pour définir son mot de passe. Ensuite, assignez-lui son rôle dans l\'onglet Utilisateurs ci-dessous.</p></div>' : '') +
+    usersHtml
+  );
+}
+
+function roleBadge(r) {
+  var map = { admin:'badge-gold', academy:'badge-blue', agent:'badge-gray' };
+  return '<span class="badge ' + (map[r]||'badge-gray') + '">' + esc(r) + '</span>';
+}
+
+async function changeRole(userId, role) {
+  var r = await DB.updateAppUserRole(userId, role);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  toast('Rôle mis à jour.','success');
+}

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BCSO — Intranet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══ LOGIN ════════════════════════════════════════════════════ -->
+<div id="loginView" class="login-page">
+  <div class="login-card">
+    <div class="login-star">⭐</div>
+    <div class="login-eyebrow">BLAINE COUNTY SHERIFF'S OFFICE</div>
+    <h1 class="login-title">INTRANET</h1>
+    <p class="login-sub">Accès réservé au personnel BCSO</p>
+    <div class="login-err" id="loginErr"></div>
+    <form onsubmit="doLogin(event)">
+      <div class="form-group">
+        <label class="form-label">Adresse e-mail</label>
+        <input class="form-control" type="email" id="loginEmail" placeholder="agent@bcso.rp" autocomplete="email" required>
+      </div>
+      <div class="form-group" style="margin-bottom:24px">
+        <label class="form-label">Mot de passe</label>
+        <input class="form-control" type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" id="loginBtn">
+        <span id="loginBtnTxt">Connexion</span>
+      </button>
+    </form>
+    <p class="login-footer">🔒 BCSO · ACCÈS SÉCURISÉ</p>
+  </div>
+</div>
+
+<!-- ══ APP SHELL ══════════════════════════════════════════════════ -->
+<div id="appView" style="display:none">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-star">⭐</div>
+      <div class="sidebar-brand">
+        <div class="sidebar-title">BCSO</div>
+        <div class="sidebar-sub">Intranet</div>
+      </div>
+      <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-footer" id="sidebarFooter"></div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+  <div class="app-main">
+    <header class="app-header">
+      <button class="hamburger" onclick="toggleSidebar()">☰</button>
+      <h1 class="page-title" id="pageTitle">Tableau de bord</h1>
+      <div class="header-actions">
+        <div class="header-search-btn" onclick="navigate('search')" title="Recherche">🔍</div>
+        <div id="userChip" class="user-chip"></div>
+      </div>
+    </header>
+    <main id="mainContent" class="main-content"></main>
+  </div>
+</div>
+
+<!-- ══ MODAL ════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalOverlay" onclick="onModalOverlayClick(event)">
+  <div class="modal-box" id="modalBox">
+    <div class="modal-hd" id="modalHd"></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-ft" id="modalFt"></div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+
+<script src="config.js"></script>
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
