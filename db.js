@@ -99,21 +99,6 @@ var DB = {
   async addAgentArme(data) { return getDb().from('agent_armes').insert(data).select().single(); },
   async deleteAgentArme(id) { return getDb().from('agent_armes').delete().eq('id', id); },
 
-  // ── Disciplinary ─────────────────────────────────────────────
-  async getDisciplinary(filters) {
-    filters = filters || {};
-    var q = getDb().from('dossiers_disciplinaires')
-      .select('*, agent:agent_id(nom,prenom,matricule,grade)')
-      .order('date', { ascending: false });
-    if (filters.agentId) q = q.eq('agent_id', filters.agentId);
-    if (filters.search)  q = q.ilike('motif', '%' + filters.search + '%');
-    var { data } = await q;
-    return data || [];
-  },
-  async createDisciplinary(data) { return getDb().from('dossiers_disciplinaires').insert(data); },
-  async updateDisciplinary(id, data) { return getDb().from('dossiers_disciplinaires').update(data).eq('id', id); },
-  async deleteDisciplinary(id) { return getDb().from('dossiers_disciplinaires').delete().eq('id', id); },
-
   // ── MDT ──────────────────────────────────────────────────────
   async getAllMdtPages() {
     var { data } = await getDb().from('mdt_pages')
@@ -154,24 +139,21 @@ var DB = {
   // ── Stats ────────────────────────────────────────────────────
   async getStats() {
     var d30 = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
-    var [ag, hist, disc] = await Promise.all([
+    var [ag, hist] = await Promise.all([
       getDb().from('agents').select('grade,statut,ppa1,ppa2,ppa3,qual_pa,qual_cid,qual_swat,qual_tu,qual_prd,unites'),
-      getDb().from('agent_historique').select('type,date').gte('date', d30),
-      getDb().from('dossiers_disciplinaires').select('id').gte('date', d30)
+      getDb().from('agent_historique').select('type,date').gte('date', d30)
     ]);
-    return { agents: ag.data || [], recentHist: hist.data || [], recentDisc: disc.data || [] };
+    return { agents: ag.data || [], recentHist: hist.data || [] };
   },
 
   // ── Search ───────────────────────────────────────────────────
   async search(q) {
-    if (!q || q.length < 2) return { agents: [], mdt: [], disc: [] };
-    var [ag, mdt, disc] = await Promise.all([
+    if (!q || q.length < 2) return { agents: [], mdt: [] };
+    var [ag, mdt] = await Promise.all([
       getDb().from('agents').select('id,nom,prenom,matricule,grade,statut')
         .or('nom.ilike.%' + q + '%,prenom.ilike.%' + q + '%,matricule.ilike.%' + q + '%').limit(8),
-      getDb().from('mdt_pages').select('id,titre,categorie_id').ilike('titre', '%' + q + '%').limit(6),
-      getDb().from('dossiers_disciplinaires')
-        .select('id,motif,date,agent:agent_id(nom,prenom)').ilike('motif', '%' + q + '%').limit(5)
+      getDb().from('mdt_pages').select('id,titre,categorie_id').ilike('titre', '%' + q + '%').limit(6)
     ]);
-    return { agents: ag.data || [], mdt: mdt.data || [], disc: disc.data || [] };
+    return { agents: ag.data || [], mdt: mdt.data || [] };
   }
 };

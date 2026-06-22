@@ -29,7 +29,6 @@ var NAV = [
   { id: 'vehicles', icon: '🚗', label: 'Véhicules' },
   { divider: true, staffOnly: true },
   { group: 'ADMINISTRATION', staffOnly: true },
-  { id: 'disciplinary', icon: '📝', label: 'Disciplinaire', staffOnly: true },
   { id: 'stats',    icon: '📈', label: 'Statistiques', staffOnly: true },
   { id: 'search',   icon: '🔍', label: 'Recherche', staffOnly: true },
   { id: 'settings', icon: '⚙️', label: 'Paramètres', staffOnly: true },
@@ -38,7 +37,7 @@ var NAV = [
 var PAGE_TITLES = {
   dashboard:'Tableau de bord', agents:'Agents', 'agent-profile':'Fiche agent',
   grades:'Grades', units:'Divisions', mdt:'Guide MDT', vehicles:'Véhicules',
-  disciplinary:'Disciplinaire', stats:'Statistiques', search:'Recherche', settings:'Paramètres'
+  stats:'Statistiques', search:'Recherche', settings:'Paramètres'
 };
 
 // ── Boot ───────────────────────────────────────────────────────────
@@ -210,7 +209,6 @@ async function navigate(page, pd) {
       units:          renderUnits,
       mdt:            renderMDT,
       vehicles:       renderVehicles,
-      disciplinary:   renderDisciplinary,
       stats:          renderStats,
       search:         renderSearch,
       settings:       renderSettings
@@ -360,7 +358,6 @@ async function renderDashboard() {
           '<div style="display:flex;flex-direction:column;gap:8px">' +
             quickLink('👮', 'Agents', 'agents') +
             quickLink('📚', 'Guide MDT', 'mdt') +
-            quickLink('📝', 'Disciplinaire', 'disciplinary') +
             quickLink('📈', 'Statistiques', 'stats') +
           '</div>' +
         '</div>' +
@@ -533,10 +530,9 @@ async function saveAgent(id) {
 async function renderAgentProfile() {
   var id = S.pd.id;
   if (!id) { navigate('agents'); return; }
-  var [ag, hist, disc, armes] = await Promise.all([
+  var [ag, hist, armes] = await Promise.all([
     DB.getAgent(id),
     DB.getHistory(id),
-    DB.getDisciplinary({ agentId: id }),
     DB.getAgentArmes(id)
   ]);
   if (!ag) { navigate('agents'); return; }
@@ -576,13 +572,6 @@ async function renderAgentProfile() {
       (isAdmin() ? '<button class="btn btn-danger btn-sm btn-icon" onclick="delHistory(\'' + h.id + '\',\'' + id + '\')">✕</button>' : '') +
     '</div>';
   }).join('') : '<div class="empty-state" style="padding:30px"><div class="empty-icon">📋</div><div class="empty-title">Aucun historique</div></div>';
-
-  var discHtml = disc.length ? disc.map(function(d){
-    return '<div style="background:var(--bg2);border:1px solid rgba(231,76,60,.2);border-left:3px solid var(--red);border-radius:var(--rMd);padding:12px 16px;margin-bottom:10px">' +
-      '<div style="font-weight:600;color:var(--t0);font-size:.86rem">' + esc(d.motif) + '</div>' +
-      '<div style="font-size:.76rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace;margin-top:3px">' + fmt(d.date) + ' · Décision : ' + esc(d.decision||'En cours') + '</div>' +
-    '</div>';
-  }).join('') : '<div class="text-muted" style="font-size:.84rem;padding:10px 0">Aucun dossier disciplinaire</div>';
 
   setContent(
     '<button class="btn btn-ghost btn-sm mb-14" onclick="navigate(\'agents\')">← Retour</button>' +
@@ -655,11 +644,6 @@ async function renderAgentProfile() {
           })() +
         '</div>' +
 
-        '<div class="card">' +
-          '<div class="card-head"><div class="card-icon">📝</div><div><div class="card-title">Dossiers disciplinaires</div></div></div>' +
-          discHtml +
-          (isAdmin() ? '<button class="btn btn-danger btn-sm" style="margin-top:10px" onclick="openDiscModal(\'' + id + '\')">+ Nouveau dossier</button>' : '') +
-        '</div>' +
       '</div>' +
 
       '<div class="card" style="height:fit-content">' +
@@ -1312,104 +1296,9 @@ async function createVehiclePage() {
 }
 
 // ══ DISCIPLINARY ═══════════════════════════════════════════════════
-async function renderDisciplinary() {
-  var search = S.pd.search || '';
-  var disc = await DB.getDisciplinary({ search: search });
-
-  var cards = disc.length ? disc.map(function(d) {
-    var agent = d.agent ? (d.agent.prenom + ' ' + d.agent.nom + ' · ' + d.agent.grade) : '—';
-    return '<div style="background:var(--bgCard);border:1px solid var(--border0);border-left:3px solid var(--red);border-radius:var(--rMd);padding:16px 20px;display:flex;align-items:flex-start;gap:16px">' +
-      '<div style="flex:1">' +
-        '<div style="font-weight:600;color:var(--t0);margin-bottom:4px">' + esc(d.motif) + '</div>' +
-        '<div style="font-size:.8rem;color:var(--t2);margin-bottom:8px">' + esc(agent) + '</div>' +
-        (d.description ? '<div style="font-size:.82rem;color:var(--t2);margin-bottom:6px">' + esc(d.description) + '</div>' : '') +
-        '<div style="font-size:.73rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace">' +
-          fmt(d.date) + (d.decision ? ' · Décision : ' + esc(d.decision) : ' · En cours') +
-        '</div>' +
-      '</div>' +
-      (isAdmin() ?
-        '<div style="display:flex;gap:6px;flex-shrink:0">' +
-          '<button class="btn btn-ghost btn-sm" onclick="openDiscModal(null,\'' + d.id + '\')">✏️</button>' +
-          '<button class="btn btn-danger btn-sm" onclick="deleteDisc(\'' + d.id + '\')">✕</button>' +
-        '</div>' : '') +
-    '</div>';
-  }).join('') : '<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">Aucun dossier disciplinaire</div></div>';
-
-  setContent(
-    '<div class="flex-between mb-20 flex-wrap gap-8">' +
-      '<div><h1 style="font-size:1.4rem">Dossiers disciplinaires</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">' + disc.length + ' dossier(s)</p></div>' +
-      (isAdmin() ? '<button class="btn btn-primary btn-sm" onclick="openDiscModal(null,null)">+ Nouveau dossier</button>' : '') +
-    '</div>' +
-    '<div class="filter-bar"><div class="search-wrap"><span class="search-icon">🔍</span>' +
-      '<input class="form-control search-input" placeholder="Rechercher par motif…" value="' + esc(search) + '" oninput="discSearch(this.value)">' +
-    '</div></div>' +
-    '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div>'
-  );
-}
-
-var _discTimer = null;
-function discSearch(v) {
-  clearTimeout(_discTimer);
-  _discTimer = setTimeout(function(){ S.pd.search = v; renderDisciplinary(); }, 280);
-}
-
-async function openDiscModal(agentId, discId) {
-  var agents = await DB.getAgents({ statut: 'Actif' });
-  var existing = null;
-  if (discId) {
-    var all = await DB.getDisciplinary();
-    existing = all.find(function(d){ return d.id === discId; });
-  }
-  var v = existing || {};
-
-  var agOpts = agents.map(function(a){
-    var sel = (agentId && a.id===agentId) || (v.agent_id && a.id===v.agent_id) ? ' selected' : '';
-    return '<option value="' + a.id + '"' + sel + '>' + esc(a.prenom+' '+a.nom+' ('+a.matricule+')') + '</option>';
-  }).join('');
-
-  openModal({
-    eyebrow: discId ? 'MODIFIER LE DOSSIER' : 'NOUVEAU DOSSIER DISCIPLINAIRE',
-    title: discId ? 'Modifier' : 'Créer un dossier',
-    body:
-      '<div class="form-group"><label class="form-label">Agent concerné *</label><select class="form-control" id="dAgent"><option value="">Sélectionner…</option>' + agOpts + '</select></div>' +
-      fld('Motif *', 'text', 'dMotif', v.motif) +
-      '<div class="form-group"><label class="form-label">Description</label><textarea class="form-control" id="dDesc" rows="3">' + esc(v.description||'') + '</textarea></div>' +
-      fld('Date', 'date', 'dDate', v.date || new Date().toISOString().split('T')[0]) +
-      fld('Décision', 'text', 'dDecision', v.decision, 'Ex: Avertissement, Suspension 48h…'),
-    footer:
-      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
-      '<button class="btn btn-primary" onclick="saveDisc(\'' + (discId||'') + '\')">Enregistrer</button>'
-  });
-}
-
-async function saveDisc(discId) {
-  var agentId = document.getElementById('dAgent').value;
-  var motif   = document.getElementById('dMotif').value.trim();
-  if (!agentId || !motif) { toast('Agent et motif requis.','error'); return; }
-  var data = {
-    agent_id: agentId,
-    motif: motif,
-    description: document.getElementById('dDesc').value.trim()||null,
-    date: document.getElementById('dDate').value || new Date().toISOString().split('T')[0],
-    decision: document.getElementById('dDecision').value.trim()||null
-  };
-  try {
-    var r = discId ? await DB.updateDisciplinary(discId, data) : await DB.createDisciplinary(data);
-    if (r.error) throw r.error;
-    closeModal(); toast('Dossier enregistré.','success'); await renderDisciplinary();
-  } catch(e) { toast(e.message,'error'); }
-}
-
-async function deleteDisc(id) {
-  if (!confirm('Supprimer ce dossier ?')) return;
-  var r = await DB.deleteDisciplinary(id);
-  if (r.error) { toast(r.error.message,'error'); return; }
-  toast('Dossier supprimé.','info'); await renderDisciplinary();
-}
-
 // ══ STATS ══════════════════════════════════════════════════════════
 async function renderStats() {
-  var { agents, recentHist, recentDisc } = await DB.getStats();
+  var { agents, recentHist } = await DB.getStats();
 
   var total = agents.length;
   var actifs = agents.filter(function(a){ return a.statut==='Actif'; }).length;
@@ -1435,7 +1324,6 @@ async function renderStats() {
       statCard('📚', 'PPA 3 validé', ppa3c) +
       statCard('⚠️', 'Sanctions (30j)', sanctions) +
       statCard('🎖️', 'Promotions (30j)', promotions) +
-      statCard('📝', 'Dossiers (30j)', recentDisc.length) +
     '</div>' +
 
     '<div class="page-grid2">' +
@@ -1517,7 +1405,7 @@ async function doSearch(q) {
     return;
   }
   el.innerHTML = '<div class="loader-block" style="padding:30px"><div class="spinner"></div></div>';
-  var { agents, mdt, disc } = await DB.search(q);
+  var { agents, mdt } = await DB.search(q);
 
   var html = '';
   if (agents.length) {
@@ -1534,15 +1422,6 @@ async function doSearch(q) {
         '<span>📄</span><span style="flex:1">' + esc(p.titre) + '</span><span class="text-muted" style="font-size:.78rem">MDT →</span>' +
       '</div>'; }).join('') + '</div>';
   }
-  if (disc.length) {
-    html += '<div class="card"><div class="card-head"><div class="card-icon">📝</div><div><div class="card-title">Dossiers disciplinaires</div><div class="card-sub">' + disc.length + ' DOSSIER(S)</div></div></div>' +
-      disc.map(function(d){ return '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border0)">' +
-        '<span style="flex:1;color:var(--t0)">' + esc(d.motif) + '</span>' +
-        '<span style="font-size:.78rem;color:var(--t2)">' + (d.agent?esc(d.agent.prenom+' '+d.agent.nom):'—') + '</span>' +
-        '<span class="mono" style="font-size:.72rem;color:var(--t3)">' + fmt(d.date) + '</span>' +
-      '</div>'; }).join('') + '</div>';
-  }
-
   el.innerHTML = html || '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">Aucun résultat pour "' + esc(q) + '"</div></div>';
 }
 

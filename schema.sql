@@ -71,9 +71,12 @@ CREATE TABLE IF NOT EXISTS agents (
   date_promotion   DATE,
   statut           TEXT NOT NULL DEFAULT 'Actif',  -- Actif | Suspendu | Retraité | Archivé
   -- Formations PPA
-  ppa1  BOOLEAN DEFAULT FALSE,
-  ppa2  BOOLEAN DEFAULT FALSE,
-  ppa3  BOOLEAN DEFAULT FALSE,
+  ppa1       BOOLEAN DEFAULT FALSE,
+  ppa1_date  DATE,
+  ppa2       BOOLEAN DEFAULT FALSE,
+  ppa2_date  DATE,
+  ppa3       BOOLEAN DEFAULT FALSE,
+  ppa3_date  DATE,
   -- Qualifications
   qual_pa   BOOLEAN DEFAULT FALSE,
   qual_cid  BOOLEAN DEFAULT FALSE,
