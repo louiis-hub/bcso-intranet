@@ -744,7 +744,8 @@ function ppaCheck(id, label, checked) {
 
 function ppaCheckDate(ckId, label, checked, date, dateId) {
   return '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
-    '<label class="form-check" style="margin:0;min-width:90px"><input type="checkbox" id="' + ckId + '"' + (checked?' checked':'') + '><span class="form-check-lbl">' + label + '</span></label>' +
+    '<label class="form-check" style="margin:0;min-width:90px"><input type="checkbox" id="' + ckId + '"' + (checked?' checked':'') + ' onchange="if(!this.checked){document.getElementById(\'' + dateId + '\').value=\'\'}">' +
+      '<span class="form-check-lbl">' + label + '</span></label>' +
     '<div style="display:flex;align-items:center;gap:6px">' +
       '<span style="font-size:.75rem;color:var(--t3)">Obtenu le</span>' +
       '<input type="date" class="form-control" id="' + dateId + '" value="' + esc(date||'') + '" style="width:155px;padding:5px 8px">' +
@@ -757,9 +758,9 @@ async function savePPAModal(agentId) {
     ppa1: document.getElementById('ppaCk1').checked,
     ppa2: document.getElementById('ppaCk2').checked,
     ppa3: document.getElementById('ppaCk3').checked,
-    ppa1_date: document.getElementById('ppaDate1').value || null,
-    ppa2_date: document.getElementById('ppaDate2').value || null,
-    ppa3_date: document.getElementById('ppaDate3').value || null,
+    ppa1_date: document.getElementById('ppaCk1').checked ? (document.getElementById('ppaDate1').value || null) : null,
+    ppa2_date: document.getElementById('ppaCk2').checked ? (document.getElementById('ppaDate2').value || null) : null,
+    ppa3_date: document.getElementById('ppaCk3').checked ? (document.getElementById('ppaDate3').value || null) : null,
     qual_pa:   document.getElementById('qkPA').checked,
     qual_cid:  document.getElementById('qkCID').checked,
     qual_swat: document.getElementById('qkSWAT').checked,
