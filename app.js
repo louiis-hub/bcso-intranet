@@ -24,7 +24,6 @@ var NAV = [
   { divider: true },
   { group: 'RESSOURCES HUMAINES' },
   { id: 'agents',   icon: '👮', label: 'Agents' },
-  { id: 'archives', icon: '🗃️', label: 'Archives', staffOnly: true },
   { id: 'grades',   icon: '🎖️', label: 'Grades' },
   { id: 'units',    icon: '🚔', label: 'Divisions' },
   { divider: true },
@@ -37,6 +36,7 @@ var NAV = [
   { id: 'document', icon: '📄', label: 'Documents' },
   { divider: true, staffOnly: true },
   { group: 'ADMINISTRATION', staffOnly: true },
+  { id: 'archives', icon: '🗃️', label: 'Archives', staffOnly: true },
   { id: 'stats',    icon: '📈', label: 'Statistiques', staffOnly: true },
   { id: 'search',   icon: '🔍', label: 'Recherche', staffOnly: true },
   { id: 'settings', icon: '⚙️', label: 'Paramètres', staffOnly: true },
@@ -614,7 +614,7 @@ async function renderAgentProfile() {
         '<div class="card">' +
           '<div class="flex-between mb-10">' +
             '<div class="card-head" style="margin:0"><div class="card-icon">📚</div><div><div class="card-title">Formations PPA</div></div></div>' +
-            (isAdmin() ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">✏️ PPA / Qualif.</button>' : '') +
+            (isAdmin() && ag.statut !== 'Archivé' ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">✏️ PPA / Qualif.</button>' : '') +
           '</div>' +
           '<div class="ppa-grid">' + ppaHtml + '</div>' +
         '</div>' +
@@ -627,7 +627,7 @@ async function renderAgentProfile() {
         '<div class="card">' +
           '<div class="flex-between mb-10">' +
             '<div class="card-head" style="margin:0"><div class="card-icon">🔫</div><div><div class="card-title">Armement</div></div></div>' +
-            (canWrite() ? '<button class="btn btn-outline btn-sm" onclick="openAddArmeModal(\'' + id + '\')">+ Ajouter</button>' : '') +
+            (canWrite() && ag.statut !== 'Archivé' ? '<button class="btn btn-outline btn-sm" onclick="openAddArmeModal(\'' + id + '\')">+ Ajouter</button>' : '') +
           '</div>' +
           (function() {
             var html = '';
@@ -1295,26 +1295,36 @@ async function createVehiclePage() {
 var _archiveSearch = '';
 async function renderArchives() {
   var agents = await DB.getArchivedAgents(_archiveSearch);
+  var rows = agents.length ? agents.map(function(a) {
+    var unites = (a.unites||[]).map(function(u){ return unitBadge(u); }).join(' ');
+    var ppas = ppaCount(a);
+    return '<tr onclick="openArchivedProfile(\'' + a.id + '\')" style="cursor:pointer">' +
+      '<td class="mono text-gold">' + esc(a.matricule) + '</td>' +
+      '<td style="font-weight:600;color:var(--t0)">' + esc(a.prenom) + ' ' + esc(a.nom) + '</td>' +
+      '<td>' + gradeBadge(a.grade) + '</td>' +
+      '<td>' + (unites||'<span class="text-muted">—</span>') + '</td>' +
+      '<td><span class="badge badge-gold" style="font-size:.65rem">PPA ' + ppas + '/3</span></td>' +
+      '<td onclick="event.stopPropagation()">' +
+        '<button class="btn btn-ghost btn-sm" onclick="openArchivedProfile(\'' + a.id + '\')">Fiche</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('') : '<tr><td colspan="6"><div class="empty-state" style="padding:40px"><div class="empty-icon">🗃️</div><div class="empty-title">Aucun agent archivé</div></div></td></tr>';
+
   setContent(
     '<div class="flex-between mb-20 flex-wrap gap-8">' +
-      '<div><h1 style="font-size:1.4rem">Archives</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Agents archivés — consultation uniquement</p></div>' +
+      '<div><h1 style="font-size:1.4rem">Archives</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">' + agents.length + ' agent(s) archivé(s) — consultation uniquement</p></div>' +
     '</div>' +
-    '<div class="mb-14"><input class="form-control search-input" placeholder="Nom, prénom, matricule…" value="' + esc(_archiveSearch) + '" oninput="archiveSearch(this.value)"></div>' +
-    (agents.length === 0 ?
-      '<div class="empty-state"><div class="empty-icon">🗃️</div><div class="empty-title">Aucun agent archivé</div></div>' :
-      '<div class="agents-grid">' +
-        agents.map(function(a) {
-          return '<div class="agent-card" onclick="openArchivedProfile(\'' + a.id + '\')">' +
-            '<div class="agent-av">👤</div>' +
-            '<div class="agent-info">' +
-              '<div class="agent-name">' + esc(a.prenom) + ' ' + esc(a.nom) + '</div>' +
-              '<div class="agent-mat">' + esc(a.matricule) + '</div>' +
-              '<div class="agent-grade">' + esc(a.grade) + '</div>' +
-            '</div>' +
-          '</div>';
-        }).join('') +
-      '</div>'
-    )
+    '<div class="filter-bar">' +
+      '<div class="search-wrap" style="max-width:320px"><span class="search-icon">🔍</span>' +
+        '<input class="form-control search-input" placeholder="Nom, prénom, matricule…" value="' + esc(_archiveSearch) + '" oninput="archiveSearch(this.value)">' +
+      '</div>' +
+    '</div>' +
+    '<div class="card" style="padding:0;overflow:hidden">' +
+      '<div class="table-wrap"><table>' +
+        '<thead><tr><th>MATRICULE</th><th>NOM</th><th>GRADE</th><th>DIVISIONS</th><th>PPA</th><th>ACTIONS</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table></div>' +
+    '</div>'
   );
 }
 var _archSearchTimer;
