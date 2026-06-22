@@ -111,6 +111,7 @@ var DB = {
   },
   async addAgentArme(data) { return getDb().from('agent_armes').insert(data).select().single(); },
   async deleteAgentArme(id) { return getDb().from('agent_armes').delete().eq('id', id); },
+  async deleteAgent(id) { return getDb().from('agents').delete().eq('id', id); },
 
   // ── MDT ──────────────────────────────────────────────────────
   async getAllMdtPages() {

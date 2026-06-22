@@ -36,10 +36,11 @@ var NAV = [
   { id: 'document', icon: '📄', label: 'Documents' },
   { divider: true, staffOnly: true },
   { group: 'ADMINISTRATION', staffOnly: true },
-  { id: 'archives', icon: '🗃️', label: 'Archives', staffOnly: true },
-  { id: 'stats',    icon: '📈', label: 'Statistiques', staffOnly: true },
-  { id: 'search',   icon: '🔍', label: 'Recherche', staffOnly: true },
-  { id: 'settings', icon: '⚙️', label: 'Paramètres', staffOnly: true },
+  { id: 'archives',        icon: '🗃️', label: 'Archives',          staffOnly: true },
+  { id: 'stats',           icon: '📈', label: 'Statistiques',       staffOnly: true },
+  { id: 'search',          icon: '🔍', label: 'Recherche',          staffOnly: true },
+  { id: 'global-settings', icon: '🛠️', label: 'Réglages globaux',   staffOnly: true },
+  { id: 'settings',        icon: '⚙️', label: 'Mon compte',         staffOnly: true },
 ];
 
 var PAGE_TITLES = {
@@ -47,7 +48,8 @@ var PAGE_TITLES = {
   grades:'Grades', units:'Divisions', mdt:'Guide MDT', vehicles:'Véhicules',
   info:'Informations', manuel:'Manuel', tenue:'Tenues', document:'Documents',
   archives:'Archives',
-  stats:'Statistiques', search:'Recherche', settings:'Paramètres'
+  'global-settings':'Réglages globaux',
+  stats:'Statistiques', search:'Recherche', settings:'Mon compte'
 };
 
 // ── Boot ───────────────────────────────────────────────────────────
@@ -227,6 +229,7 @@ async function navigate(page, pd) {
       tenue:          function(){ return renderWikiSection('tenue',    {title:'Tenues',       sub:'Uniformes et équipements règlementaires', icon:'👔'}); },
       document:       function(){ return renderWikiSection('document', {title:'Documents',    sub:'Documents et formulaires officiels', icon:'📄'}); },
       archives:       renderArchives,
+      'global-settings': renderGlobalSettings,
       stats:          renderStats,
       search:         renderSearch,
       settings:       renderSettings
@@ -1304,8 +1307,9 @@ async function renderArchives() {
       '<td>' + gradeBadge(a.grade) + '</td>' +
       '<td>' + (unites||'<span class="text-muted">—</span>') + '</td>' +
       '<td><span class="badge badge-gold" style="font-size:.65rem">PPA ' + ppas + '/3</span></td>' +
-      '<td onclick="event.stopPropagation()">' +
+      '<td onclick="event.stopPropagation()" style="white-space:nowrap">' +
         '<button class="btn btn-ghost btn-sm" onclick="openArchivedProfile(\'' + a.id + '\')">Fiche</button>' +
+        (isAdmin() ? ' <button class="btn btn-danger btn-sm" onclick="deleteArchivedAgent(\'' + a.id + '\',\'' + esc(a.prenom+' '+a.nom) + '\')">Supprimer</button>' : '') +
       '</td>' +
     '</tr>';
   }).join('') : '<tr><td colspan="6"><div class="empty-state" style="padding:40px"><div class="empty-icon">🗃️</div><div class="empty-title">Aucun agent archivé</div></div></td></tr>';
@@ -1333,8 +1337,14 @@ function archiveSearch(v) {
   _archSearchTimer = setTimeout(function(){ _archiveSearch = v; renderArchives(); }, 280);
 }
 function openArchivedProfile(id) {
-  S.agentId = id;
-  navigate('agent-profile');
+  navigate('agent-profile', { id: id });
+}
+async function deleteArchivedAgent(id, name) {
+  if (!confirm('Supprimer définitivement ' + name + ' ?\n\nCette action est irréversible — toutes les données seront perdues.')) return;
+  var r = await DB.deleteAgent(id);
+  if (r.error) { toast(r.error.message, 'error'); return; }
+  toast('Dossier supprimé définitivement.', 'info');
+  renderArchives();
 }
 async function archiveAgent(id) {
   if (!confirm('Archiver cet agent ? Sa fiche passera en lecture seule et disparaîtra de la liste des agents.')) return;
@@ -1597,6 +1607,106 @@ async function openMdtPageFromSearch(catId, pageId) {
   await openMdtPage(pageId);
 }
 
+// ══ GLOBAL SETTINGS ═══════════════════════════════════════════════
+async function renderGlobalSettings() {
+  if (!isAdmin()) { toast('Accès réservé aux administrateurs.','error'); return; }
+  var appUsers = await DB.getAppUsers();
+  var grades   = await DB.getGrades();
+  var units    = await DB.getUnits();
+  var archived = await DB.getArchivedAgents('');
+
+  function section(icon, title, sub, body) {
+    return '<div class="card" style="margin-bottom:18px">' +
+      '<div class="card-head"><div class="card-icon">' + icon + '</div><div>' +
+        '<div class="card-title">' + title + '</div>' +
+        (sub ? '<div class="card-sub">' + sub + '</div>' : '') +
+      '</div></div>' + body + '</div>';
+  }
+
+  // ── Utilisateurs ──
+  var usersHtml = '<div class="table-wrap"><table>' +
+    '<thead><tr><th>NOM</th><th>PRÉNOM</th><th>RÔLE</th><th>CHANGER</th></tr></thead><tbody>' +
+    appUsers.map(function(u) {
+      return '<tr><td>' + esc(u.nom) + '</td><td>' + esc(u.prenom) + '</td>' +
+        '<td>' + roleBadge(u.app_role) + '</td>' +
+        '<td><select class="form-control" style="width:auto" onchange="changeRole(\'' + u.id + '\',this.value)">' +
+          ['admin','academy','agent'].map(function(r){ return '<option value="' + r + '"' + (u.app_role===r?' selected':'') + '>' + r + '</option>'; }).join('') +
+        '</select></td></tr>';
+    }).join('') + '</tbody></table></div>';
+
+  // ── Grades ──
+  var gradesHtml = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">' +
+    grades.map(function(g){
+      return '<div style="display:flex;align-items:center;gap:6px;background:var(--bg1);border-radius:var(--rSm);padding:6px 12px">' +
+        '<span style="font-size:.83rem;color:var(--t1);font-weight:600">' + esc(g.nom) + '</span>' +
+        '<span class="mono" style="font-size:.68rem;color:var(--t3)">' + esc(g.abrev||'') + '</span>' +
+        '<button class="btn btn-danger btn-sm btn-icon" style="padding:2px 6px;font-size:.7rem" onclick="deleteGradeGS(\'' + g.id + '\',\'' + esc(g.nom) + '\')">✕</button>' +
+      '</div>';
+    }).join('') + '</div>' +
+    '<button class="btn btn-outline btn-sm" onclick="navigate(\'grades\')">✏️ Gérer les grades</button>';
+
+  // ── Unités ──
+  var unitsHtml = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">' +
+    units.map(function(u){
+      return '<div style="display:flex;align-items:center;gap:6px;background:var(--bg1);border-radius:var(--rSm);padding:6px 12px">' +
+        '<span class="mono text-gold" style="font-size:.8rem;font-weight:700">' + esc(u.code) + '</span>' +
+        '<span style="font-size:.8rem;color:var(--t2)">' + esc(u.nom) + '</span>' +
+        '<button class="btn btn-danger btn-sm btn-icon" style="padding:2px 6px;font-size:.7rem" onclick="deleteUnitGS(\'' + u.id + '\',\'' + esc(u.code) + '\')">✕</button>' +
+      '</div>';
+    }).join('') + '</div>' +
+    '<button class="btn btn-outline btn-sm" onclick="navigate(\'units\')">✏️ Gérer les divisions</button>';
+
+  // ── Rôles Discord ──
+  var rolesHtml = '<div style="font-size:.82rem;color:var(--t2);line-height:2">' +
+    '<div>🔴 <strong>Admin complet</strong> : <span class="mono" style="color:var(--t3)">1518289587531939881</span> / <span class="mono" style="color:var(--t3)">1518289618783572032</span></div>' +
+    '<div>🔵 <strong>Académie</strong> : <span class="mono" style="color:var(--t3)">1517973389778620487</span></div>' +
+    '<div>⚪ <strong>Agent</strong> : tous les autres membres authentifiés</div>' +
+  '</div>';
+
+  // ── Zone de danger ──
+  var dangerHtml = '<p style="font-size:.83rem;color:var(--t2);margin-bottom:14px">' + archived.length + ' agent(s) dans les archives.</p>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<button class="btn btn-outline btn-sm" onclick="navigate(\'archives\')">🗃️ Voir les archives</button>' +
+      (archived.length ? '<button class="btn btn-danger btn-sm" onclick="purgeAllArchives()">💀 Purger toutes les archives</button>' : '') +
+    '</div>';
+
+  setContent(
+    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Réglages globaux</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Configuration générale du site — accès admin uniquement</p></div></div>' +
+    section('👥', 'Gestion des accès', 'RÔLES DES UTILISATEURS', usersHtml) +
+    section('🎖️', 'Grades', 'HIÉRARCHIE', gradesHtml) +
+    section('🚔', 'Divisions', 'UNITÉS DU BCSO', unitsHtml) +
+    section('🤖', 'Rôles Discord', 'IDS CONFIGURÉS POUR L\'ACCÈS', rolesHtml) +
+    section('⚠️', 'Zone de danger', 'ACTIONS IRRÉVERSIBLES', dangerHtml)
+  );
+}
+async function deleteGradeGS(id, nom) {
+  if (!confirm('Supprimer le grade "' + nom + '" ?\nAttention : les agents ayant ce grade devront être mis à jour manuellement.')) return;
+  var r = await DB.deleteGrade(id);
+  if (r.error) { toast(r.error.message, 'error'); return; }
+  toast('Grade supprimé.', 'info');
+  renderGlobalSettings();
+}
+async function deleteUnitGS(id, code) {
+  if (!confirm('Supprimer la division "' + code + '" ?')) return;
+  var r = await DB.deleteUnit(id);
+  if (r.error) { toast(r.error.message, 'error'); return; }
+  toast('Division supprimée.', 'info');
+  renderGlobalSettings();
+}
+async function purgeAllArchives() {
+  var archived = await DB.getArchivedAgents('');
+  if (!archived.length) { toast('Aucune archive à purger.', 'info'); return; }
+  if (!confirm('Supprimer définitivement les ' + archived.length + ' agent(s) archivé(s) ?\n\nCette action est IRRÉVERSIBLE.')) return;
+  var errors = [];
+  for (var i = 0; i < archived.length; i++) {
+    var r = await DB.deleteAgent(archived[i].id);
+    if (r.error) errors.push(archived[i].nom);
+  }
+  if (errors.length) toast('Erreur sur : ' + errors.join(', '), 'error');
+  else toast('Toutes les archives ont été supprimées.', 'success');
+  renderGlobalSettings();
+}
+
 // ══ SETTINGS ══════════════════════════════════════════════════════
 async function renderSettings() {
   var appUsers = isAdmin() ? await DB.getAppUsers() : [];
@@ -1622,24 +1732,20 @@ async function renderSettings() {
   }
 
   setContent(
-    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Paramètres</h1></div></div>' +
+    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Mon compte</h1></div></div>' +
     '<div class="card">' +
-      '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Mon compte</div></div></div>' +
+      '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Informations</div></div></div>' +
       infoRow('Discord', displayName) +
+      infoRow('Pseudo serveur', S.serverNick || '—') +
       infoRow('Nom', me ? (me.prenom + ' ' + me.nom).trim() || '—' : '—') +
       infoRow('Rôle', roleBadge(S.role)) +
     '</div>' +
     '<div class="card" style="margin-top:18px">' +
-      '<div class="card-head"><div class="card-icon">🔒</div><div><div class="card-title">Sécurité</div></div></div>' +
+      '<div class="card-head"><div class="card-icon">🔒</div><div><div class="card-title">Session</div></div></div>' +
       '<p class="text-muted" style="font-size:.84rem;margin-bottom:14px">L\'accès est géré via les rôles Discord. Les permissions sont mises à jour automatiquement à chaque connexion.</p>' +
       '<button class="btn btn-danger btn-sm" onclick="doLogout()">⏻ Se déconnecter</button>' +
     '</div>' +
-    (isAdmin() ? '<div class="card" style="margin-top:18px"><div class="card-head"><div class="card-icon">ℹ️</div><div><div class="card-title">Accès au site</div></div></div>' +
-      '<p class="text-muted" style="font-size:.84rem">L\'accès est automatique selon les rôles Discord :<br><br>' +
-      '• <strong>Admin complet</strong> : rôles 1518289587531939881 ou 1518289618783572032<br>' +
-      '• <strong>Académie</strong> : rôle 1517973389778620487<br>' +
-      '• <strong>Agent</strong> : tous les autres membres du serveur</p></div>' : '') +
-    usersHtml
+    (isAdmin() ? '<div class="card" style="margin-top:18px"><p class="text-muted" style="font-size:.82rem">👉 Administration complète dans <a onclick="navigate(\'global-settings\')" style="color:var(--blue);cursor:pointer">Réglages globaux</a>.</p></div>' : '')
   );
 }
 
