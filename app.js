@@ -13,6 +13,8 @@ var _units  = [];
 var _mdtCats = [];
 var _mdtSelCat = null;
 var _mdtSelPage = null;
+var _vehicleCatId = null;
+var _vehiclePages = [];
 
 var NAV = [
   { id: 'dashboard', icon: '🏛️', label: 'Tableau de bord' },
@@ -24,6 +26,7 @@ var NAV = [
   { divider: true },
   { group: 'DOCUMENTATION' },
   { id: 'mdt',      icon: '📚', label: 'Guide MDT' },
+  { id: 'vehicles', icon: '🚗', label: 'Véhicules' },
   { divider: true, staffOnly: true },
   { group: 'ADMINISTRATION', staffOnly: true },
   { id: 'disciplinary', icon: '📝', label: 'Disciplinaire', staffOnly: true },
@@ -34,7 +37,7 @@ var NAV = [
 
 var PAGE_TITLES = {
   dashboard:'Tableau de bord', agents:'Agents', 'agent-profile':'Fiche agent',
-  grades:'Grades', units:'Divisions', mdt:'Guide MDT',
+  grades:'Grades', units:'Divisions', mdt:'Guide MDT', vehicles:'Véhicules',
   disciplinary:'Disciplinaire', stats:'Statistiques', search:'Recherche', settings:'Paramètres'
 };
 
@@ -193,7 +196,7 @@ async function navigate(page, pd) {
   _charts = {};
   _quill = null;
   setContent('<div class="loader-block"><div class="spinner"></div><p>Chargement…</p></div>');
-  var AGENT_ALLOWED = ['dashboard','agents','agent-profile','grades','units','mdt'];
+  var AGENT_ALLOWED = ['dashboard','agents','agent-profile','grades','units','mdt','vehicles'];
   if (S.role === 'agent' && AGENT_ALLOWED.indexOf(page) === -1) {
     setContent('<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Accès restreint</div><div class="empty-sub">Cette section est réservée au personnel d\'encadrement.</div></div>');
     return;
@@ -206,6 +209,7 @@ async function navigate(page, pd) {
       grades:         renderGrades,
       units:          renderUnits,
       mdt:            renderMDT,
+      vehicles:       renderVehicles,
       disciplinary:   renderDisciplinary,
       stats:          renderStats,
       search:         renderSearch,
@@ -1056,6 +1060,159 @@ async function createMdtPage() {
     _mdtPages = await DB.getAllMdtPages();
     renderMdtList();
     if (r.data) await openMdtPage(r.data.id);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ══ VEHICLES ═══════════════════════════════════════════════════════
+async function renderVehicles() {
+  if (!_vehicleCatId) _vehicleCatId = await DB.getOrCreateVehicleCat();
+  _vehiclePages = await DB.getAllVehiclePages(_vehicleCatId);
+
+  setContent(
+    '<div class="flex-between mb-20 flex-wrap gap-8">' +
+      '<div><h1 style="font-size:1.4rem">Véhicules</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Parc automobile du BCSO</p></div>' +
+      (canWrite() ? '<button class="btn btn-primary btn-sm" onclick="openVehicleNewPage()">+ Nouvelle page</button>' : '') +
+    '</div>' +
+    '<div class="mdt-layout">' +
+      '<aside class="mdt-sidebar"><div id="vehicleList"></div></aside>' +
+      '<div class="mdt-main" id="vehicleMain">' +
+        '<div class="empty-state"><div class="empty-icon">🚗</div><div class="empty-title">Sélectionnez une page</div></div>' +
+      '</div>' +
+    '</div>'
+  );
+  renderVehicleList();
+}
+
+function renderVehicleList() {
+  var el = document.getElementById('vehicleList');
+  if (!el) return;
+  if (!_vehiclePages.length) {
+    el.innerHTML = '<p style="color:var(--t3);font-size:.8rem;text-align:center;padding:20px 8px">Aucune page.' +
+      (canWrite() ? '<br>Cliquez sur "+ Nouvelle page".' : '') + '</p>';
+    return;
+  }
+  el.innerHTML = _vehiclePages.map(function(p) {
+    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openVehiclePage(\'' + p.id + '\')">' +
+      '🚗 ' + esc(p.titre) + '</div>';
+  }).join('');
+}
+
+async function openVehiclePage(pageId) {
+  _mdtSelPage = pageId;
+  renderVehicleList();
+  var page = await DB.getMdtPage(pageId);
+  if (!page) return;
+  var main = document.getElementById('vehicleMain');
+  if (!main) return;
+  main.innerHTML =
+    '<div class="card mb-14">' +
+      '<div class="flex-between flex-wrap gap-8">' +
+        '<div><h2 style="font-size:1.3rem">' + esc(page.titre) + '</h2>' +
+        '<div class="mono" style="font-size:.64rem;color:var(--t3);margin-top:3px">Modifié le ' + fmt(page.updated_at) + '</div></div>' +
+        (canWrite() ? '<div style="display:flex;gap:8px">' +
+          '<button class="btn btn-outline btn-sm" onclick="editVehiclePage(\'' + pageId + '\')">✏️ Modifier</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="delVehiclePage(\'' + pageId + '\')">Supprimer</button>' +
+        '</div>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="card ql-view" style="min-height:300px;font-size:.9rem;line-height:1.7;color:var(--t1)">' +
+      (page.contenu || '<p class="text-muted">Page vide. Cliquez sur "Modifier" pour ajouter du contenu.</p>') +
+    '</div>';
+}
+
+async function editVehiclePage(pageId) {
+  var page = await DB.getMdtPage(pageId);
+  if (!page) return;
+  var main = document.getElementById('vehicleMain');
+  main.innerHTML =
+    '<div class="card mb-14">' +
+      '<div class="flex-between flex-wrap gap-8">' +
+        '<input class="form-control" id="vehicleEditTitle" value="' + esc(page.titre) + '" style="font-size:1.1rem;font-weight:700;max-width:400px">' +
+        '<div style="display:flex;gap:8px">' +
+          '<button class="btn btn-ghost btn-sm" onclick="openVehiclePage(\'' + pageId + '\')">Annuler</button>' +
+          '<button class="btn btn-primary btn-sm" onclick="saveVehiclePage(\'' + pageId + '\')">💾 Sauvegarder</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="vehicleEditor"></div>';
+
+  _quill = new Quill('#vehicleEditor', {
+    theme: 'snow',
+    modules: {
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ['bold', 'italic', 'underline', 'strike'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['blockquote', 'link', 'image'],
+          [{ color: [] }, { align: [] }]
+        ],
+        handlers: {
+          image: function() {
+            openModal({
+              eyebrow: 'INSÉRER UNE IMAGE',
+              title: 'URL de l\'image',
+              size: 'sm',
+              body: fld('Lien direct *', 'url', 'imgUrl', '', 'https://i.imgur.com/...'),
+              footer: '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+                '<button class="btn btn-primary" onclick="insertMdtImage()">Insérer</button>'
+            });
+          }
+        }
+      }
+    }
+  });
+  if (page.contenu) _quill.clipboard.dangerouslyPasteHTML(0, page.contenu);
+}
+
+async function saveVehiclePage(pageId) {
+  var titre = document.getElementById('vehicleEditTitle').value.trim();
+  if (!titre) { toast('Le titre est requis.','error'); return; }
+  var editorEl = document.querySelector('#vehicleEditor .ql-editor');
+  var contenu = editorEl ? editorEl.innerHTML : (_quill ? _quill.root.innerHTML : '');
+  try {
+    var r = await DB.updateMdtPage(pageId, { titre: titre, contenu: contenu });
+    if (r.error) throw r.error;
+    toast('Page sauvegardée.','success');
+    _vehiclePages = await DB.getAllVehiclePages(_vehicleCatId);
+    await openVehiclePage(pageId);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function delVehiclePage(pageId) {
+  if (!confirm('Supprimer cette page ?')) return;
+  var r = await DB.deleteMdtPage(pageId);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  _mdtSelPage = null;
+  toast('Page supprimée.','info');
+  _vehiclePages = await DB.getAllVehiclePages(_vehicleCatId);
+  renderVehicleList();
+  var main = document.getElementById('vehicleMain');
+  if (main) main.innerHTML = '<div class="empty-state"><div class="empty-icon">🚗</div><div class="empty-title">Page supprimée</div></div>';
+}
+
+function openVehicleNewPage() {
+  openModal({
+    eyebrow: 'NOUVELLE PAGE VÉHICULE',
+    title: 'Créer une page',
+    size: 'sm',
+    body: fld('Titre *', 'text', 'vpTitre', '', 'Ex: Ford Crown Victoria'),
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="createVehiclePage()">Créer</button>'
+  });
+}
+
+async function createVehiclePage() {
+  var titre = document.getElementById('vpTitre').value.trim();
+  if (!titre) { toast('Titre requis.','error'); return; }
+  try {
+    var r = await DB.createVehiclePage(_vehicleCatId, { titre: titre, contenu: '', ordre: _vehiclePages.length });
+    if (r.error) throw r.error;
+    closeModal(); toast('Page créée.','success');
+    _vehiclePages = await DB.getAllVehiclePages(_vehicleCatId);
+    renderVehicleList();
+    if (r.data) await openVehiclePage(r.data.id);
   } catch(e) { toast(e.message,'error'); }
 }
 

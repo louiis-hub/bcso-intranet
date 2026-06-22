@@ -108,8 +108,23 @@ var DB = {
   // ── MDT ──────────────────────────────────────────────────────
   async getAllMdtPages() {
     var { data } = await getDb().from('mdt_pages')
-      .select('id,titre,ordre,updated_at').order('ordre').order('titre');
+      .select('id,titre,ordre,updated_at').is('categorie_id', null).order('ordre').order('titre');
     return data || [];
+  },
+  async getOrCreateVehicleCat() {
+    var { data: ex } = await getDb().from('mdt_categories').select('id').eq('nom','__vehicles__').maybeSingle();
+    if (ex) return ex.id;
+    var { data: cr } = await getDb().from('mdt_categories').insert({ nom:'__vehicles__', emoji:'🚗', ordre:-999 }).select().single();
+    return cr ? cr.id : null;
+  },
+  async getAllVehiclePages(catId) {
+    var { data } = await getDb().from('mdt_pages')
+      .select('id,titre,ordre,updated_at').eq('categorie_id', catId).order('ordre').order('titre');
+    return data || [];
+  },
+  async createVehiclePage(catId, data) {
+    data.categorie_id = catId;
+    return getDb().from('mdt_pages').insert(data).select().single();
   },
   async getMdtPage(id) {
     var { data } = await getDb().from('mdt_pages').select('*').eq('id', id).single();
