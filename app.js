@@ -533,18 +533,19 @@ async function saveAgent(id) {
 async function renderAgentProfile() {
   var id = S.pd.id;
   if (!id) { navigate('agents'); return; }
-  var [ag, hist, disc] = await Promise.all([
+  var [ag, hist, disc, armes] = await Promise.all([
     DB.getAgent(id),
     DB.getHistory(id),
-    DB.getDisciplinary({ agentId: id })
+    DB.getDisciplinary({ agentId: id }),
+    DB.getAgentArmes(id)
   ]);
   if (!ag) { navigate('agents'); return; }
 
   var unites = (ag.unites||[]).map(unitBadge).join(' ');
   var ppas = [
-    { key:'ppa1', label:'PPA 1', val:ag.ppa1 },
-    { key:'ppa2', label:'PPA 2', val:ag.ppa2 },
-    { key:'ppa3', label:'PPA 3', val:ag.ppa3 }
+    { key:'ppa1', label:'PPA 1', val:ag.ppa1, date:ag.ppa1_date },
+    { key:'ppa2', label:'PPA 2', val:ag.ppa2, date:ag.ppa2_date },
+    { key:'ppa3', label:'PPA 3', val:ag.ppa3, date:ag.ppa3_date }
   ];
   var quals = [
     { key:'qual_pa',   label:'PA',   val:ag.qual_pa   },
@@ -557,7 +558,10 @@ async function renderAgentProfile() {
   var ppaHtml = ppas.map(function(p){
     return '<div class="ppa-item' + (p.val?' checked':'') + '">' +
       '<div class="ppa-check">' + (p.val ? '✅' : '⬜') + '</div>' +
-      '<div class="ppa-label">' + p.label + '</div>' +
+      '<div>' +
+        '<div class="ppa-label">' + p.label + '</div>' +
+        (p.val && p.date ? '<div style="font-size:.7rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace">Obtenu le ' + fmt(p.date) + '</div>' : '') +
+      '</div>' +
     '</div>';
   }).join('');
 
@@ -617,6 +621,38 @@ async function renderAgentProfile() {
         '<div class="card">' +
           '<div class="card-head"><div class="card-icon">🏅</div><div><div class="card-title">Qualifications</div></div></div>' +
           '<div class="qual-grid">' + qualHtml + '</div>' +
+        '</div>' +
+
+        '<div class="card">' +
+          '<div class="flex-between mb-10">' +
+            '<div class="card-head" style="margin:0"><div class="card-icon">🔫</div><div><div class="card-title">Armement</div></div></div>' +
+            (canWrite() ? '<button class="btn btn-outline btn-sm" onclick="openAddArmeModal(\'' + id + '\')">+ Ajouter</button>' : '') +
+          '</div>' +
+          (function() {
+            var html = '';
+            [1,2,3].forEach(function(n) {
+              var lvl = armes.filter(function(a){ return a.ppa_niveau === n; });
+              if (!ag['ppa'+n] && !lvl.length) return;
+              html += '<div style="margin-bottom:10px">' +
+                '<div style="font-size:.68rem;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">PPA ' + n + '</div>';
+              if (lvl.length) {
+                lvl.forEach(function(a) {
+                  html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--bg1);border-radius:var(--rSm);margin-bottom:4px">' +
+                    '<div>' +
+                      '<div style="font-size:.85rem;font-weight:600;color:var(--t0)">' + esc(a.nom) + '</div>' +
+                      '<div style="font-size:.7rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace">' + (a.serie ? 'S/N : ' + esc(a.serie) : 'Pas de numéro de série') + '</div>' +
+                    '</div>' +
+                    (canWrite() ? '<button class="btn btn-danger btn-sm btn-icon" onclick="delArme(\'' + a.id + '\',\'' + id + '\')">✕</button>' : '') +
+                  '</div>';
+                });
+              } else {
+                html += '<div style="font-size:.8rem;color:var(--t3);padding:4px 0">Aucune arme assignée</div>';
+              }
+              html += '</div>';
+            });
+            if (!html) html = '<div style="font-size:.82rem;color:var(--t3)">Aucun PPA — aucune arme assignable.</div>';
+            return html;
+          })() +
         '</div>' +
 
         '<div class="card">' +
@@ -697,10 +733,10 @@ async function openPPAModal(agentId) {
     title: ag.prenom + ' ' + ag.nom,
     body:
       '<div class="form-group"><label class="form-label">Formations PPA</label>' +
-        '<div style="display:flex;flex-direction:column;gap:6px">' +
-          ppaCheck('ppaCk1','PPA 1',ag.ppa1) +
-          ppaCheck('ppaCk2','PPA 2',ag.ppa2) +
-          ppaCheck('ppaCk3','PPA 3',ag.ppa3) +
+        '<div style="display:flex;flex-direction:column;gap:10px">' +
+          ppaCheckDate('ppaCk1','PPA 1',ag.ppa1,ag.ppa1_date,'ppaDate1') +
+          ppaCheckDate('ppaCk2','PPA 2',ag.ppa2,ag.ppa2_date,'ppaDate2') +
+          ppaCheckDate('ppaCk3','PPA 3',ag.ppa3,ag.ppa3_date,'ppaDate3') +
         '</div>' +
       '</div>' +
       '<div class="form-group"><label class="form-label">Qualifications</label>' +
@@ -722,11 +758,24 @@ function ppaCheck(id, label, checked) {
   return '<label class="form-check"><input type="checkbox" id="' + id + '"' + (checked?' checked':'') + '><span class="form-check-lbl">' + label + '</span></label>';
 }
 
+function ppaCheckDate(ckId, label, checked, date, dateId) {
+  return '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+    '<label class="form-check" style="margin:0;min-width:90px"><input type="checkbox" id="' + ckId + '"' + (checked?' checked':'') + '><span class="form-check-lbl">' + label + '</span></label>' +
+    '<div style="display:flex;align-items:center;gap:6px">' +
+      '<span style="font-size:.75rem;color:var(--t3)">Obtenu le</span>' +
+      '<input type="date" class="form-control" id="' + dateId + '" value="' + esc(date||'') + '" style="width:155px;padding:5px 8px">' +
+    '</div>' +
+  '</div>';
+}
+
 async function savePPAModal(agentId) {
   var data = {
     ppa1: document.getElementById('ppaCk1').checked,
     ppa2: document.getElementById('ppaCk2').checked,
     ppa3: document.getElementById('ppaCk3').checked,
+    ppa1_date: document.getElementById('ppaDate1').value || null,
+    ppa2_date: document.getElementById('ppaDate2').value || null,
+    ppa3_date: document.getElementById('ppaDate3').value || null,
     qual_pa:   document.getElementById('qkPA').checked,
     qual_cid:  document.getElementById('qkCID').checked,
     qual_swat: document.getElementById('qkSWAT').checked,
@@ -740,6 +789,52 @@ async function savePPAModal(agentId) {
     toast('Formations mises à jour.','success');
     await renderAgentProfile();
   } catch(e) { toast(e.message,'error'); }
+}
+
+async function openAddArmeModal(agentId) {
+  if (!canWrite()) return;
+  var ag = await DB.getAgent(agentId);
+  if (!ag) return;
+  var ppas = [];
+  if (ag.ppa1) ppas.push({ level:1, label:'PPA 1' });
+  if (ag.ppa2) ppas.push({ level:2, label:'PPA 2' });
+  if (ag.ppa3) ppas.push({ level:3, label:'PPA 3' });
+  if (!ppas.length) { toast("Cet agent n'a aucun PPA validé.", 'error'); return; }
+  var ppaOpts = ppas.map(function(p){ return '<option value="' + p.level + '">' + p.label + '</option>'; }).join('');
+  openModal({
+    eyebrow: 'ARMEMENT',
+    title: 'Ajouter une arme — ' + esc(ag.prenom) + ' ' + esc(ag.nom),
+    body:
+      fld("Nom de l'arme *", 'text', 'armeNom', '', 'Ex : Glock 17, AR-15…') +
+      fld('Numéro de série', 'text', 'armeSerie', '', 'Ex : GK-123456') +
+      '<div class="form-group"><label class="form-label">Niveau PPA requis *</label>' +
+        '<select class="form-control" id="armeNiveau">' + ppaOpts + '</select>' +
+      '</div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveArme(\'' + agentId + '\')">Ajouter</button>'
+  });
+}
+
+async function saveArme(agentId) {
+  var nom = document.getElementById('armeNom').value.trim();
+  if (!nom) { toast('Nom de l\'arme requis.','error'); return; }
+  var serie  = document.getElementById('armeSerie').value.trim();
+  var niveau = parseInt(document.getElementById('armeNiveau').value, 10);
+  try {
+    var r = await DB.addAgentArme({ agent_id: agentId, nom: nom, serie: serie||null, ppa_niveau: niveau });
+    if (r.error) throw r.error;
+    closeModal();
+    toast('Arme ajoutée.','success');
+    await renderAgentProfile();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function delArme(armeId, agentId) {
+  if (!confirm('Retirer cette arme ?')) return;
+  await DB.deleteAgentArme(armeId);
+  toast('Arme retirée.','info');
+  await renderAgentProfile();
 }
 
 // ══ GRADES ═════════════════════════════════════════════════════════

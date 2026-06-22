@@ -90,6 +90,15 @@ var DB = {
   async addHistory(data) { return getDb().from('agent_historique').insert(data); },
   async deleteHistory(id) { return getDb().from('agent_historique').delete().eq('id', id); },
 
+  // ── Agent armes ──────────────────────────────────────────────────
+  async getAgentArmes(agentId) {
+    var { data } = await getDb().from('agent_armes')
+      .select('*').eq('agent_id', agentId).order('ppa_niveau').order('nom');
+    return data || [];
+  },
+  async addAgentArme(data) { return getDb().from('agent_armes').insert(data).select().single(); },
+  async deleteAgentArme(id) { return getDb().from('agent_armes').delete().eq('id', id); },
+
   // ── Disciplinary ─────────────────────────────────────────────
   async getDisciplinary(filters) {
     filters = filters || {};
