@@ -40,7 +40,7 @@ var DB = {
   // ── Agents ───────────────────────────────────────────────────
   async getAgents(filters) {
     filters = filters || {};
-    var q = getDb().from('agents').select('*').order('nom').order('prenom');
+    var q = getDb().from('agents').select('*').order('matricule');
     if (filters.statut) q = q.eq('statut', filters.statut);
     if (filters.grade)  q = q.eq('grade', filters.grade);
     if (filters.unite)  q = q.contains('unites', [filters.unite]);
