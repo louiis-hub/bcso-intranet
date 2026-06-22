@@ -24,6 +24,7 @@ var NAV = [
   { divider: true },
   { group: 'RESSOURCES HUMAINES' },
   { id: 'agents',   icon: '👮', label: 'Agents' },
+  { id: 'archives', icon: '🗃️', label: 'Archives', staffOnly: true },
   { id: 'grades',   icon: '🎖️', label: 'Grades' },
   { id: 'units',    icon: '🚔', label: 'Divisions' },
   { divider: true },
@@ -45,6 +46,7 @@ var PAGE_TITLES = {
   dashboard:'Tableau de bord', agents:'Agents', 'agent-profile':'Fiche agent',
   grades:'Grades', units:'Divisions', mdt:'Guide MDT', vehicles:'Véhicules',
   info:'Informations', manuel:'Manuel', tenue:'Tenues', document:'Documents',
+  archives:'Archives',
   stats:'Statistiques', search:'Recherche', settings:'Paramètres'
 };
 
@@ -224,6 +226,7 @@ async function navigate(page, pd) {
       manuel:         function(){ return renderWikiSection('manuel',   {title:'Manuel',       sub:'Procédures et protocoles opérationnels', icon:'📋'}); },
       tenue:          function(){ return renderWikiSection('tenue',    {title:'Tenues',       sub:'Uniformes et équipements règlementaires', icon:'👔'}); },
       document:       function(){ return renderWikiSection('document', {title:'Documents',    sub:'Documents et formulaires officiels', icon:'📄'}); },
+      archives:       renderArchives,
       stats:          renderStats,
       search:         renderSearch,
       settings:       renderSettings
@@ -514,6 +517,8 @@ async function saveAgent(id) {
   var nom    = document.getElementById('agNom').value.trim();
   var mat    = document.getElementById('agMatricule').value.trim();
   if (!prenom || !nom || !mat) { toast('Prénom, nom et matricule sont requis.','error'); return; }
+  var matTaken = await DB.checkMatricule(mat, id || null);
+  if (matTaken) { toast('Ce matricule est déjà utilisé par un autre agent.','error'); return; }
 
   var unites = Array.from(document.querySelectorAll('input[name="unite"]:checked')).map(function(c){ return c.value; });
   var data = {
@@ -585,10 +590,13 @@ async function renderAgentProfile() {
         '<div class="profile-mat">' + esc(ag.matricule) + '</div>' +
         '<div class="profile-meta">' + gradeBadge(ag.grade) + statusBadge(ag.statut) + unites + '</div>' +
       '</div>' +
-      (canWrite() ?
-        '<div class="profile-actions">' +
-          '<button class="btn btn-outline btn-sm" onclick="openAgentModal(\'' + id + '\')">✏️ Modifier</button>' +
-        '</div>' : '') +
+      (ag.statut === 'Archivé' ?
+        '<div class="profile-actions"><span class="badge badge-red" style="font-size:.8rem;padding:6px 14px">🗃️ Archivé — lecture seule</span></div>' :
+        canWrite() ?
+          '<div class="profile-actions">' +
+            '<button class="btn btn-outline btn-sm" onclick="openAgentModal(\'' + id + '\')">✏️ Modifier</button>' +
+            (isAdmin() ? '<button class="btn btn-ghost btn-sm" style="color:var(--t3)" onclick="archiveAgent(\'' + id + '\')">🗃️ Archiver</button>' : '') +
+          '</div>' : '') +
     '</div>' +
 
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">' +
@@ -1283,6 +1291,49 @@ async function createVehiclePage() {
 }
 
 // ══ DISCIPLINARY ═══════════════════════════════════════════════════
+// ══ ARCHIVES ════════════════════════════════════════════════════════
+var _archiveSearch = '';
+async function renderArchives() {
+  var agents = await DB.getArchivedAgents(_archiveSearch);
+  setContent(
+    '<div class="flex-between mb-20 flex-wrap gap-8">' +
+      '<div><h1 style="font-size:1.4rem">Archives</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Agents archivés — consultation uniquement</p></div>' +
+    '</div>' +
+    '<div class="mb-14"><input class="form-control search-input" placeholder="Nom, prénom, matricule…" value="' + esc(_archiveSearch) + '" oninput="archiveSearch(this.value)"></div>' +
+    (agents.length === 0 ?
+      '<div class="empty-state"><div class="empty-icon">🗃️</div><div class="empty-title">Aucun agent archivé</div></div>' :
+      '<div class="agents-grid">' +
+        agents.map(function(a) {
+          return '<div class="agent-card" onclick="openArchivedProfile(\'' + a.id + '\')">' +
+            '<div class="agent-av">👤</div>' +
+            '<div class="agent-info">' +
+              '<div class="agent-name">' + esc(a.prenom) + ' ' + esc(a.nom) + '</div>' +
+              '<div class="agent-mat">' + esc(a.matricule) + '</div>' +
+              '<div class="agent-grade">' + esc(a.grade) + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>'
+    )
+  );
+}
+var _archSearchTimer;
+function archiveSearch(v) {
+  clearTimeout(_archSearchTimer);
+  _archSearchTimer = setTimeout(function(){ _archiveSearch = v; renderArchives(); }, 280);
+}
+function openArchivedProfile(id) {
+  S.agentId = id;
+  navigate('agent-profile');
+}
+async function archiveAgent(id) {
+  if (!confirm('Archiver cet agent ? Sa fiche passera en lecture seule et disparaîtra de la liste des agents.')) return;
+  var r = await DB.updateAgent(id, { statut: 'Archivé' });
+  if (r.error) { toast(r.error.message, 'error'); return; }
+  toast('Agent archivé.', 'info');
+  navigate('archives');
+}
+
 // ══ WIKI GÉNÉRIQUE ══════════════════════════════════════════════════
 async function renderWikiSection(slug, cfg) {
   _wikiSlug = slug;

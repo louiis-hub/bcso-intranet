@@ -42,6 +42,7 @@ var DB = {
     filters = filters || {};
     var q = getDb().from('agents').select('*').order('matricule');
     if (filters.statut) q = q.eq('statut', filters.statut);
+    else q = q.neq('statut', 'Archivé');
     if (filters.grade)  q = q.eq('grade', filters.grade);
     if (filters.unite)  q = q.contains('unites', [filters.unite]);
     if (filters.search) {
@@ -50,6 +51,18 @@ var DB = {
     }
     var { data } = await q;
     return data || [];
+  },
+  async getArchivedAgents(search) {
+    var q = getDb().from('agents').select('*').eq('statut', 'Archivé').order('matricule');
+    if (search) q = q.or('nom.ilike.%' + search + '%,prenom.ilike.%' + search + '%,matricule.ilike.%' + search + '%');
+    var { data } = await q;
+    return data || [];
+  },
+  async checkMatricule(matricule, excludeId) {
+    var q = getDb().from('agents').select('id').eq('matricule', matricule);
+    if (excludeId) q = q.neq('id', excludeId);
+    var { data } = await q;
+    return data && data.length > 0;
   },
   async getAgent(id) {
     var { data } = await getDb().from('agents').select('*').eq('id', id).single();
