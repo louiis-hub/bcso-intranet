@@ -106,13 +106,9 @@ var DB = {
   async deleteDisciplinary(id) { return getDb().from('dossiers_disciplinaires').delete().eq('id', id); },
 
   // ── MDT ──────────────────────────────────────────────────────
-  async getMdtCategories() {
-    var { data } = await getDb().from('mdt_categories').select('*').order('ordre').order('nom');
-    return data || [];
-  },
-  async getMdtPages(catId) {
+  async getAllMdtPages() {
     var { data } = await getDb().from('mdt_pages')
-      .select('id,titre,ordre,updated_at').eq('categorie_id', catId).order('ordre').order('titre');
+      .select('id,titre,ordre,updated_at').order('ordre').order('titre');
     return data || [];
   },
   async getMdtPage(id) {

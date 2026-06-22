@@ -891,90 +891,46 @@ async function deleteUnit(id, nom) {
 }
 
 // ══ MDT ════════════════════════════════════════════════════════════
+var _mdtPages = [];
+
 async function renderMDT() {
-  _mdtCats = await DB.getMdtCategories();
+  _mdtPages = await DB.getAllMdtPages();
   _mdtSelPage = null;
 
   setContent(
     '<div class="flex-between mb-20 flex-wrap gap-8">' +
       '<div><h1 style="font-size:1.4rem">Guide MDT</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Documentation interne du BCSO</p></div>' +
-      (canWrite() ? '<button class="btn btn-primary btn-sm" onclick="openMdtCatModal(null,null)">+ Catégorie</button>' : '') +
+      (canWrite() ? '<button class="btn btn-primary btn-sm" onclick="openMdtNewPage()">+ Nouvelle page</button>' : '') +
     '</div>' +
     '<div class="mdt-layout">' +
-      '<aside class="mdt-sidebar">' +
-        '<div id="mdtTree"></div>' +
-      '</aside>' +
+      '<aside class="mdt-sidebar"><div id="mdtList"></div></aside>' +
       '<div class="mdt-main" id="mdtMain">' +
-        '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">Sélectionnez une page dans le menu de gauche</div></div>' +
+        '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">Sélectionnez une page</div></div>' +
       '</div>' +
     '</div>'
   );
-  renderMdtTree();
+  renderMdtList();
 }
 
-function renderMdtTree() {
-  var roots = _mdtCats.filter(function(c){ return !c.parent_id; });
-  var byParent = {};
-  _mdtCats.filter(function(c){ return c.parent_id; }).forEach(function(c){
-    if (!byParent[c.parent_id]) byParent[c.parent_id] = [];
-    byParent[c.parent_id].push(c);
-  });
-
-  function renderNode(cat, depth) {
-    var isOpen = _mdtSelCat === cat.id;
-    var indent = 'padding-left:' + (8 + depth*14) + 'px';
-    var sub = (byParent[cat.id]||[]).map(function(c){ return renderNode(c, depth+1); }).join('');
-    return '<div>' +
-      '<div class="mdt-cat' + (isOpen?' open':'') + '" style="' + indent + '" onclick="toggleMdtCat(\'' + cat.id + '\')">' +
-        '<span>' + (isOpen ? '📂' : (cat.emoji||'📁')) + '</span>' +
-        '<span style="flex:1">' + esc(cat.nom) + '</span>' +
-        (canWrite() ?
-          '<span onclick="event.stopPropagation();openMdtCatMenu(\'' + cat.id + '\')" style="color:var(--t3);cursor:pointer;padding:0 2px;font-size:.8rem">⋮</span>'
-          : '') +
-      '</div>' +
-      '<div id="mdtPages-' + cat.id + '" style="display:' + (isOpen?'block':'none') + '"></div>' +
-      sub +
-    '</div>';
-  }
-
-  var tree = document.getElementById('mdtTree');
-  if (!tree) return;
-  if (!roots.length) {
-    tree.innerHTML = '<p style="color:var(--t3);font-size:.8rem;text-align:center;padding:20px 8px">Aucune catégorie.<br>' +
-      (isAdmin() ? 'Cliquez sur "+ Catégorie" pour commencer.' : '') + '</p>';
+function renderMdtList() {
+  var el = document.getElementById('mdtList');
+  if (!el) return;
+  if (!_mdtPages.length) {
+    el.innerHTML = '<p style="color:var(--t3);font-size:.8rem;text-align:center;padding:20px 8px">Aucune page.' +
+      (canWrite() ? '<br>Cliquez sur "+ Nouvelle page".' : '') + '</p>';
     return;
   }
-  tree.innerHTML = roots.map(function(c){ return renderNode(c,0); }).join('');
-  if (_mdtSelCat) loadMdtCatPages(_mdtSelCat);
-}
-
-async function toggleMdtCat(catId) {
-  if (_mdtSelCat === catId) { _mdtSelCat = null; renderMdtTree(); return; }
-  _mdtSelCat = catId;
-  renderMdtTree();
-  await loadMdtCatPages(catId);
-}
-
-async function loadMdtCatPages(catId) {
-  var pages = await DB.getMdtPages(catId);
-  var el = document.getElementById('mdtPages-' + catId);
-  if (!el) return;
-  el.innerHTML = pages.map(function(p){
+  el.innerHTML = _mdtPages.map(function(p) {
     return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openMdtPage(\'' + p.id + '\')">' +
       '📄 ' + esc(p.titre) + '</div>';
-  }).join('') +
-  (canWrite() ? '<div class="mdt-page-item" onclick="openMdtNewPage(\'' + catId + '\')" style="color:var(--gold);opacity:.6">+ Nouvelle page</div>' : '');
+  }).join('');
 }
 
 async function openMdtPage(pageId) {
   _mdtSelPage = pageId;
-  // update tree active state
-  document.querySelectorAll('.mdt-page-item').forEach(function(el){
-    el.classList.toggle('active', el.textContent.includes && el.getAttribute && false);
-  });
+  renderMdtList();
   var page = await DB.getMdtPage(pageId);
   if (!page) return;
-
   var main = document.getElementById('mdtMain');
   if (!main) return;
   main.innerHTML =
@@ -989,19 +945,13 @@ async function openMdtPage(pageId) {
       '</div>' +
     '</div>' +
     '<div class="card ql-view" style="min-height:300px;font-size:.9rem;line-height:1.7;color:var(--t1)">' +
-      (page.contenu || '<p class="text-muted">Cette page est vide. Cliquez sur "Modifier" pour ajouter du contenu.</p>') +
+      (page.contenu || '<p class="text-muted">Page vide. Cliquez sur "Modifier" pour ajouter du contenu.</p>') +
     '</div>';
-
-  // re-highlight active page
-  document.querySelectorAll('.mdt-page-item').forEach(function(el){
-    el.classList.remove('active');
-  });
 }
 
 async function editMdtPage(pageId) {
   var page = await DB.getMdtPage(pageId);
   if (!page) return;
-
   var main = document.getElementById('mdtMain');
   main.innerHTML =
     '<div class="card mb-14">' +
@@ -1044,6 +994,8 @@ async function saveMdtPage(pageId) {
     var r = await DB.updateMdtPage(pageId, { titre: titre, contenu: contenu });
     if (r.error) throw r.error;
     toast('Page sauvegardée.','success');
+    _mdtPages = await DB.getAllMdtPages();
+    renderMdtList();
     await openMdtPage(pageId);
   } catch(e) { toast(e.message,'error'); }
 }
@@ -1054,119 +1006,35 @@ async function delMdtPage(pageId) {
   if (r.error) { toast(r.error.message,'error'); return; }
   _mdtSelPage = null;
   toast('Page supprimée.','info');
+  _mdtPages = await DB.getAllMdtPages();
+  renderMdtList();
   var main = document.getElementById('mdtMain');
   if (main) main.innerHTML = '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">Page supprimée</div></div>';
-  await loadMdtCatPages(_mdtSelCat);
 }
 
-async function openMdtNewPage(catId) {
+function openMdtNewPage() {
   openModal({
     eyebrow: 'NOUVELLE PAGE MDT',
     title: 'Créer une page',
     size: 'sm',
-    body: fld('Titre *', 'text', 'npTitre', '', 'Ex: Code pénal — Art. 100'),
+    body: fld('Titre *', 'text', 'npTitre', '', 'Ex: Code pénal — Infractions'),
     footer:
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
-      '<button class="btn btn-primary" onclick="createMdtPage(\'' + catId + '\')">Créer</button>'
+      '<button class="btn btn-primary" onclick="createMdtPage()">Créer</button>'
   });
 }
 
-async function createMdtPage(catId) {
+async function createMdtPage() {
   var titre = document.getElementById('npTitre').value.trim();
   if (!titre) { toast('Titre requis.','error'); return; }
   try {
-    var r = await DB.createMdtPage({ categorie_id: catId, titre: titre, contenu: '', ordre: 0 });
+    var r = await DB.createMdtPage({ titre: titre, contenu: '', ordre: _mdtPages.length });
     if (r.error) throw r.error;
     closeModal(); toast('Page créée.','success');
-    await loadMdtCatPages(catId);
+    _mdtPages = await DB.getAllMdtPages();
+    renderMdtList();
     if (r.data) await openMdtPage(r.data.id);
   } catch(e) { toast(e.message,'error'); }
-}
-
-function openMdtCatModal(parentId, editId) {
-  openModal({
-    eyebrow: editId ? 'MODIFIER LA CATÉGORIE' : 'NOUVELLE CATÉGORIE',
-    title: editId ? 'Modifier' : 'Ajouter une catégorie',
-    size: 'sm',
-    body:
-      fld('Nom *', 'text', 'mcNom', '') +
-      '<div class="form-grid2">' +
-        fld('Emoji', 'text', 'mcEmoji', parentId ? '📄' : '📁', '📁') +
-        fld('Ordre', 'number', 'mcOrdre', '0') +
-      '</div>',
-    footer:
-      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
-      '<button class="btn btn-primary" onclick="saveMdtCat(\'' + (parentId||'') + '\',\'' + (editId||'') + '\')">Enregistrer</button>'
-  });
-}
-
-function openMdtCatMenu(catId) {
-  var cat = _mdtCats.find(function(c){ return c.id === catId; });
-  var nom = cat ? cat.nom : '';
-  openModal({
-    eyebrow: 'CATÉGORIE MDT',
-    title: esc(nom),
-    size: 'sm',
-    body: '<div style="display:flex;flex-direction:column;gap:8px">' +
-      '<button class="btn btn-outline" onclick="openMdtCatEditModal(\'' + catId + '\')">✏️ Renommer</button>' +
-      '<button class="btn btn-outline" onclick="openMdtCatModal(\'' + catId + '\',null)">➕ Sous-catégorie</button>' +
-      '<button class="btn btn-danger" onclick="delMdtCat(\'' + catId + '\')">🗑️ Supprimer</button>' +
-    '</div>',
-    footer: ''
-  });
-}
-
-function openMdtCatEditModal(catId) {
-  var cat = _mdtCats.find(function(c){ return c.id === catId; });
-  var nom = cat ? cat.nom : '';
-  closeModal();
-  setTimeout(function() {
-    openModal({
-      eyebrow: 'RENOMMER',
-      title: 'Renommer la catégorie',
-      size: 'sm',
-      body: fld('Nouveau nom *', 'text', 'rcNom', nom),
-      footer:
-        '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
-        '<button class="btn btn-primary" onclick="renameMdtCat(\'' + catId + '\')">Renommer</button>'
-    });
-  }, 180);
-}
-
-async function renameMdtCat(catId) {
-  var nom = document.getElementById('rcNom').value.trim();
-  if (!nom) { toast('Nom requis.','error'); return; }
-  var r = await DB.updateMdtCategory(catId, { nom: nom });
-  if (r.error) { toast(r.error.message,'error'); return; }
-  closeModal(); toast('Catégorie renommée.','success');
-  _mdtCats = await DB.getMdtCategories();
-  renderMdtTree();
-}
-
-async function saveMdtCat(parentId, editId) {
-  var nom = document.getElementById('mcNom').value.trim();
-  if (!nom) { toast('Nom requis.','error'); return; }
-  var data = { nom: nom, emoji: document.getElementById('mcEmoji').value.trim()||'📁', ordre: parseInt(document.getElementById('mcOrdre').value)||0 };
-  if (parentId) data.parent_id = parentId;
-  try {
-    var r = await DB.createMdtCategory(data);
-    if (r.error) throw r.error;
-    closeModal(); toast('Catégorie créée.','success');
-    _mdtCats = await DB.getMdtCategories();
-    renderMdtTree();
-  } catch(e) { toast(e.message,'error'); }
-}
-
-async function delMdtCat(catId) {
-  var cat = _mdtCats.find(function(c){ return c.id === catId; });
-  var nom = cat ? cat.nom : 'cette catégorie';
-  if (!confirm('Supprimer la catégorie "' + nom + '" et toutes ses pages ?')) return;
-  var r = await DB.deleteMdtCategory(catId);
-  if (r.error) { toast(r.error.message,'error'); return; }
-  closeModal(); toast('Catégorie supprimée.','info');
-  _mdtSelCat = null; _mdtSelPage = null;
-  _mdtCats = await DB.getMdtCategories();
-  renderMdtTree();
 }
 
 // ══ DISCIPLINARY ═══════════════════════════════════════════════════
