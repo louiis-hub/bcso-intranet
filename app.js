@@ -80,6 +80,7 @@ async function getDiscordRole(token) {
     });
     if (!res.ok) return null;
     var member = await res.json();
+    S.serverNick = member.nick || null;
     var roles = member.roles || [];
     if (ROLE_ADMIN_IDS.some(function(r){ return roles.indexOf(r) !== -1; })) return 'admin';
     if (roles.indexOf(ROLE_ACADEMY_ID) !== -1) return 'academy';
@@ -167,9 +168,11 @@ function buildNav() {
       '<button class="sidebar-logout" onclick="doLogout()" title="Déconnexion">⏻</button>' +
     '</div>';
 
+  var chipName = S.serverNick || n;
+  var chipInitials = chipName.split(' ').map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2);
   document.getElementById('userChip').innerHTML =
-    '<div class="user-chip-av">' + initials + '</div>' +
-    '<span class="user-chip-name">' + esc(n) + '</span>';
+    '<div class="user-chip-av">' + chipInitials + '</div>' +
+    '<span class="user-chip-name">' + esc(chipName) + '</span>';
 }
 
 function updateUserUI() {
@@ -544,22 +547,26 @@ async function renderAgentProfile() {
     { key:'ppa3', label:'PPA 3', val:ag.ppa3, date:ag.ppa3_date }
   ];
   var quals = [
-    { key:'qual_pa',   label:'PA',   val:ag.qual_pa   },
     { key:'qual_cid',  label:'CID',  val:ag.qual_cid  },
     { key:'qual_swat', label:'SWAT', val:ag.qual_swat },
     { key:'qual_tu',   label:'TU',   val:ag.qual_tu   },
     { key:'qual_prd',  label:'PRD',  val:ag.qual_prd  }
   ];
 
-  var ppaHtml = ppas.map(function(p){
-    return '<div class="ppa-item' + (p.val?' checked':'') + '">' +
-      '<div class="ppa-check">' + (p.val ? '✅' : '⬜') + '</div>' +
-      '<div>' +
-        '<div class="ppa-label">' + p.label + '</div>' +
-        (p.val && p.date ? '<div style="font-size:.7rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace">Obtenu le ' + fmt(p.date) + '</div>' : '') +
-      '</div>' +
-    '</div>';
-  }).join('');
+  var ppaHtml =
+    '<div class="ppa-item' + (ag.qual_pa?' checked':'') + '" style="grid-column:1/-1;flex-direction:row;justify-content:center;gap:8px">' +
+      '<div class="ppa-check">' + (ag.qual_pa ? '✅' : '⬜') + '</div>' +
+      '<div><div class="ppa-label">SHERIFF COUNTY ACADEMY (PA)</div></div>' +
+    '</div>' +
+    ppas.map(function(p){
+      return '<div class="ppa-item' + (p.val?' checked':'') + '">' +
+        '<div class="ppa-check">' + (p.val ? '✅' : '⬜') + '</div>' +
+        '<div>' +
+          '<div class="ppa-label">' + p.label + '</div>' +
+          (p.val && p.date ? '<div style="font-size:.7rem;color:var(--t3);font-family:\'Share Tech Mono\',monospace">Obtenu le ' + fmt(p.date) + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
 
   var qualHtml = quals.map(function(q){
     return '<span class="qual-badge qual-' + q.label + (q.val?' earned':'') + '">' + q.label + '</span>';
@@ -718,6 +725,8 @@ async function openPPAModal(agentId) {
     body:
       '<div class="form-group"><label class="form-label">Formations PPA</label>' +
         '<div style="display:flex;flex-direction:column;gap:10px">' +
+          ppaCheck('qkPA','Sheriff County Academy (PA)',ag.qual_pa) +
+          '<div style="height:1px;background:var(--border0);margin:2px 0"></div>' +
           ppaCheckDate('ppaCk1','PPA 1',ag.ppa1,ag.ppa1_date,'ppaDate1') +
           ppaCheckDate('ppaCk2','PPA 2',ag.ppa2,ag.ppa2_date,'ppaDate2') +
           ppaCheckDate('ppaCk3','PPA 3',ag.ppa3,ag.ppa3_date,'ppaDate3') +
@@ -725,7 +734,6 @@ async function openPPAModal(agentId) {
       '</div>' +
       '<div class="form-group"><label class="form-label">Qualifications</label>' +
         '<div style="display:flex;flex-direction:column;gap:6px">' +
-          ppaCheck('qkPA','Sheriff County Academy (PA)',ag.qual_pa) +
           ppaCheck('qkCID','CID',ag.qual_cid) +
           ppaCheck('qkSWAT','SWAT',ag.qual_swat) +
           ppaCheck('qkTU','Traffic Unit (TU)',ag.qual_tu) +
