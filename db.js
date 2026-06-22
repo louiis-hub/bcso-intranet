@@ -8,8 +8,14 @@ function getDb() {
 var DB = {
 
   // ── Auth ──────────────────────────────────────────────────────
-  async login(email, password) {
-    return getDb().auth.signInWithPassword({ email, password });
+  async loginWithDiscord() {
+    return getDb().auth.signInWithOAuth({
+      provider: 'discord',
+      options: {
+        scopes: 'identify guilds.members.read',
+        redirectTo: 'https://louiis-hub.github.io/bcso-intranet/'
+      }
+    });
   },
   async logout() { return getDb().auth.signOut(); },
   async getSession() { return getDb().auth.getSession(); },

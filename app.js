@@ -41,43 +41,68 @@ var PAGE_TITLES = {
 (async function boot() {
   try {
     var { data: { session } } = await DB.getSession();
-    if (session) { await afterLogin(session.user); }
+    if (session) { await afterLogin(session.user, session); }
     else { showLogin(); }
   } catch(e) { showLogin(); }
   DB.onAuthChange(async function(event, session) {
-    if (event === 'SIGNED_OUT') showLogin();
+    if (event === 'SIGNED_IN' && session && !S.user) { await afterLogin(session.user, session); }
+    if (event === 'SIGNED_OUT') { S.user = null; S.role = 'agent'; showLogin(); }
   });
 })();
 
 // ── Auth ───────────────────────────────────────────────────────────
-async function doLogin(e) {
-  e.preventDefault();
-  var email = document.getElementById('loginEmail').value.trim();
-  var pass  = document.getElementById('loginPassword').value;
+async function doDiscordLogin() {
+  var btn = document.getElementById('loginBtn');
+  var txt = document.getElementById('loginBtnTxt');
   var errEl = document.getElementById('loginErr');
-  var btn   = document.getElementById('loginBtn');
-  var txt   = document.getElementById('loginBtnTxt');
   errEl.classList.remove('show');
   btn.disabled = true;
-  txt.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px"></span> Connexion…';
+  txt.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px"></span> Redirection…';
   try {
-    var { data, error } = await DB.login(email, pass);
+    var { error } = await DB.loginWithDiscord();
     if (error) throw error;
-    await afterLogin(data.user);
   } catch(err) {
-    errEl.textContent = '⚠ ' + (err.message || 'Identifiants incorrects.');
+    errEl.textContent = '⚠ ' + (err.message || 'Erreur de connexion Discord.');
     errEl.classList.add('show');
     btn.disabled = false;
-    txt.textContent = 'Connexion';
-    document.getElementById('loginPassword').value = '';
+    txt.textContent = 'Se connecter avec Discord';
   }
 }
 
-async function afterLogin(user) {
+async function getDiscordRole(token) {
+  if (!token) return 'agent';
+  try {
+    var res = await fetch('https://discord.com/api/users/@me/guilds/' + GUILD_ID + '/member', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return 'agent';
+    var member = await res.json();
+    var roles = member.roles || [];
+    if (ROLE_ADMIN_IDS.some(function(r){ return roles.indexOf(r) !== -1; })) return 'admin';
+    if (roles.indexOf(ROLE_ACADEMY_ID) !== -1) return 'academy';
+    return 'agent';
+  } catch(e) { return 'agent'; }
+}
+
+async function afterLogin(user, session) {
   S.user = user;
-  var appUser = await DB.getAppUser(user.id);
-  S.appUser = appUser;
-  S.role = (appUser && appUser.app_role) || 'agent';
+  if (!session) {
+    var { data } = await DB.getSession();
+    session = data.session;
+  }
+  var providerToken = session && session.provider_token;
+  if (providerToken) {
+    S.role = await getDiscordRole(providerToken);
+    await DB.upsertAppUser({
+      user_id: user.id,
+      nom: (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.global_name)) || '',
+      prenom: '',
+      app_role: S.role
+    });
+  } else {
+    var appUser = await DB.getAppUser(user.id);
+    S.role = (appUser && appUser.app_role) || 'agent';
+  }
   _grades = await DB.getGrades();
   showApp();
   await navigate('dashboard');
@@ -92,7 +117,7 @@ async function doLogout() {
 function showLogin() {
   document.getElementById('loginView').style.display = '';
   document.getElementById('appView').style.display = 'none';
-  document.getElementById('loginBtnTxt').textContent = 'Connexion';
+  document.getElementById('loginBtnTxt').textContent = 'Se connecter avec Discord';
   document.getElementById('loginBtn').disabled = false;
   var errEl = document.getElementById('loginErr');
   if (errEl) errEl.classList.remove('show');
