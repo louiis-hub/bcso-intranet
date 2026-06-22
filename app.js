@@ -591,8 +591,8 @@ async function renderAgentProfile() {
         '</div>' : '') +
     '</div>' +
 
-    '<div class="page-grid3">' +
-      '<div style="display:flex;flex-direction:column;gap:18px">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">' +
+      '<div style="display:contents">' +
 
         '<div class="card">' +
           '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Informations</div></div></div>' +
