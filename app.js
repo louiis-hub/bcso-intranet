@@ -553,12 +553,7 @@ async function renderAgentProfile() {
     { key:'qual_prd',  label:'PRD',  val:ag.qual_prd  }
   ];
 
-  var ppaHtml =
-    '<div class="ppa-item' + (ag.qual_pa?' checked':'') + '" style="grid-column:1/-1;flex-direction:row;justify-content:center;gap:8px">' +
-      '<div class="ppa-check">' + (ag.qual_pa ? '✅' : '⬜') + '</div>' +
-      '<div><div class="ppa-label">SHERIFF COUNTY ACADEMY (PA)</div></div>' +
-    '</div>' +
-    ppas.map(function(p){
+  var ppaHtml = ppas.map(function(p){
       return '<div class="ppa-item' + (p.val?' checked':'') + '">' +
         '<div class="ppa-check">' + (p.val ? '✅' : '⬜') + '</div>' +
         '<div>' +
@@ -593,7 +588,6 @@ async function renderAgentProfile() {
       (canWrite() ?
         '<div class="profile-actions">' +
           '<button class="btn btn-outline btn-sm" onclick="openAgentModal(\'' + id + '\')">✏️ Modifier</button>' +
-          (isAdmin() ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">PPA / Qualif.</button>' : '') +
         '</div>' : '') +
     '</div>' +
 
@@ -610,7 +604,10 @@ async function renderAgentProfile() {
         '</div>' +
 
         '<div class="card">' +
-          '<div class="card-head"><div class="card-icon">📚</div><div><div class="card-title">Formations PPA</div></div></div>' +
+          '<div class="flex-between mb-10">' +
+            '<div class="card-head" style="margin:0"><div class="card-icon">📚</div><div><div class="card-title">Formations PPA</div></div></div>' +
+            (isAdmin() ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">✏️ PPA / Qualif.</button>' : '') +
+          '</div>' +
           '<div class="ppa-grid">' + ppaHtml + '</div>' +
         '</div>' +
 
