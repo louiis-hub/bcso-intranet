@@ -741,7 +741,7 @@ async function openPPAModal(agentId) {
       '</div>' +
       '<div class="form-group"><label class="form-label">Qualifications</label>' +
         '<div style="display:flex;flex-direction:column;gap:6px">' +
-          ppaCheck('qkPA','Police Academy (PA)',ag.qual_pa) +
+          ppaCheck('qkPA','Sheriff County Academy (PA)',ag.qual_pa) +
           ppaCheck('qkCID','CID',ag.qual_cid) +
           ppaCheck('qkSWAT','SWAT',ag.qual_swat) +
           ppaCheck('qkTU','Traffic Unit (TU)',ag.qual_tu) +

@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS units (
 );
 
 INSERT INTO units (code, nom, description) VALUES
-  ('PA',   'Police Academy',             'Formation initiale des nouvelles recrues BCSO.'),
+  ('PA',   'Sheriff County Academy',      'Formation initiale des nouvelles recrues BCSO.'),
   ('CID',  'Criminal Investigation Div.','Investigations criminelles et enquêtes judiciaires.'),
   ('SWAT', 'Special Weapons and Tactics','Interventions tactiques à haut risque.'),
   ('TU',   'Traffic Unit',               'Contrôle de la circulation et accidents de la route.'),
