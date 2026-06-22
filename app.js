@@ -1389,16 +1389,19 @@ async function renderSettings() {
     '<div class="card">' +
       '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Mon compte</div></div></div>' +
       infoRow('Email', email) +
-      infoRow('Nom', me ? (me.prenom + ' ' + me.nom) : '—') +
-      infoRow('Rôle', me ? me.app_role : 'agent') +
+      infoRow('Nom', me ? (me.prenom + ' ' + me.nom).trim() || '—' : '—') +
+      infoRow('Rôle', roleBadge(S.role)) +
     '</div>' +
     '<div class="card" style="margin-top:18px">' +
       '<div class="card-head"><div class="card-icon">🔒</div><div><div class="card-title">Sécurité</div></div></div>' +
-      '<p class="text-muted" style="font-size:.84rem;margin-bottom:14px">Pour modifier votre mot de passe, contactez l\'administrateur ou utilisez le portail Supabase.</p>' +
+      '<p class="text-muted" style="font-size:.84rem;margin-bottom:14px">L\'accès est géré via les rôles Discord. Les permissions sont mises à jour automatiquement à chaque connexion.</p>' +
       '<button class="btn btn-danger btn-sm" onclick="doLogout()">⏻ Se déconnecter</button>' +
     '</div>' +
-    (isAdmin() ? '<div class="card" style="margin-top:18px"><div class="card-head"><div class="card-icon">ℹ️</div><div><div class="card-title">Créer un compte</div></div></div>' +
-      '<p class="text-muted" style="font-size:.84rem">Pour inviter un nouvel utilisateur : allez sur <strong>Supabase Dashboard → Authentication → Users → Invite</strong>, entrez l\'e-mail de la personne. Elle recevra un lien pour définir son mot de passe. Ensuite, assignez-lui son rôle dans l\'onglet Utilisateurs ci-dessous.</p></div>' : '') +
+    (isAdmin() ? '<div class="card" style="margin-top:18px"><div class="card-head"><div class="card-icon">ℹ️</div><div><div class="card-title">Accès au site</div></div></div>' +
+      '<p class="text-muted" style="font-size:.84rem">L\'accès est automatique selon les rôles Discord :<br><br>' +
+      '• <strong>Admin complet</strong> : rôles 1518289587531939881 ou 1518289618783572032<br>' +
+      '• <strong>Académie</strong> : rôle 1517973389778620487<br>' +
+      '• <strong>Agent</strong> : tous les autres membres du serveur</p></div>' : '') +
     usersHtml
   );
 }
