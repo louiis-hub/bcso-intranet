@@ -523,7 +523,8 @@ async function saveAgent(id) {
     if (res.error) throw res.error;
     closeModal();
     toast(id ? 'Agent modifié.' : 'Agent créé.', 'success');
-    await renderAgents();
+    if (id && S.page === 'agent-profile') await renderAgentProfile();
+    else await renderAgents();
   } catch(err) {
     toast(err.message || 'Erreur lors de la sauvegarde.', 'error');
   }
@@ -612,7 +613,7 @@ async function renderAgentProfile() {
         '</div>' +
 
         '<div class="card">' +
-          '<div class="card-head"><div class="card-icon">🏅</div><div><div class="card-title">Qualifications</div></div></div>' +
+          '<div class="card-head"><div class="card-icon">🏅</div><div><div class="card-title">Divisions</div></div></div>' +
           '<div class="qual-grid">' + qualHtml + '</div>' +
         '</div>' +
 
@@ -729,7 +730,7 @@ async function openPPAModal(agentId) {
           ppaCheckDate('ppaCk3','PPA 3',ag.ppa3,ag.ppa3_date,'ppaDate3') +
         '</div>' +
       '</div>' +
-      '<div class="form-group"><label class="form-label">Qualifications</label>' +
+      '<div class="form-group"><label class="form-label">Divisions</label>' +
         '<div style="display:flex;flex-direction:column;gap:6px">' +
           ppaCheck('qkCID','CID',ag.qual_cid) +
           ppaCheck('qkSWAT','SWAT',ag.qual_swat) +
