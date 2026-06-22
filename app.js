@@ -898,7 +898,7 @@ async function renderMDT() {
   setContent(
     '<div class="flex-between mb-20 flex-wrap gap-8">' +
       '<div><h1 style="font-size:1.4rem">Guide MDT</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Documentation interne du BCSO</p></div>' +
-      (isAdmin() ? '<button class="btn btn-primary btn-sm" onclick="openMdtCatModal(null,null)">+ Catégorie</button>' : '') +
+      (canWrite() ? '<button class="btn btn-primary btn-sm" onclick="openMdtCatModal(null,null)">+ Catégorie</button>' : '') +
     '</div>' +
     '<div class="mdt-layout">' +
       '<aside class="mdt-sidebar">' +
@@ -928,7 +928,7 @@ function renderMdtTree() {
       '<div class="mdt-cat' + (isOpen?' open':'') + '" style="' + indent + '" onclick="toggleMdtCat(\'' + cat.id + '\')">' +
         '<span>' + (isOpen ? '📂' : (cat.emoji||'📁')) + '</span>' +
         '<span style="flex:1">' + esc(cat.nom) + '</span>' +
-        (isAdmin() ?
+        (canWrite() ?
           '<span onclick="event.stopPropagation();openMdtCatMenu(\'' + cat.id + '\')" style="color:var(--t3);cursor:pointer;padding:0 2px;font-size:.8rem">⋮</span>'
           : '') +
       '</div>' +
@@ -963,7 +963,7 @@ async function loadMdtCatPages(catId) {
     return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openMdtPage(\'' + p.id + '\')">' +
       '📄 ' + esc(p.titre) + '</div>';
   }).join('') +
-  (isAdmin() ? '<div class="mdt-page-item" onclick="openMdtNewPage(\'' + catId + '\')" style="color:var(--gold);opacity:.6">+ Nouvelle page</div>' : '');
+  (canWrite() ? '<div class="mdt-page-item" onclick="openMdtNewPage(\'' + catId + '\')" style="color:var(--gold);opacity:.6">+ Nouvelle page</div>' : '');
 }
 
 async function openMdtPage(pageId) {
@@ -982,7 +982,7 @@ async function openMdtPage(pageId) {
       '<div class="flex-between flex-wrap gap-8">' +
         '<div><h2 style="font-size:1.3rem">' + esc(page.titre) + '</h2>' +
         '<div class="mono" style="font-size:.64rem;color:var(--t3);margin-top:3px">Modifié le ' + fmt(page.updated_at) + '</div></div>' +
-        (isAdmin() ? '<div style="display:flex;gap:8px">' +
+        (canWrite() ? '<div style="display:flex;gap:8px">' +
           '<button class="btn btn-outline btn-sm" onclick="editMdtPage(\'' + pageId + '\')">✏️ Modifier</button>' +
           '<button class="btn btn-danger btn-sm" onclick="delMdtPage(\'' + pageId + '\')">Supprimer</button>' +
         '</div>' : '') +
