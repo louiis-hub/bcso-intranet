@@ -973,11 +973,14 @@ async function editMdtPage(pageId) {
           [{'list':'ordered'},{'list':'bullet'}],'blockquote','link','image',{'color':[]},{'align':[]}],
         handlers: {
           image: function() {
-            var url = prompt('URL de l\'image (lien direct) :');
-            if (url) {
-              var range = _quill.getSelection() || { index: _quill.getLength() };
-              _quill.insertEmbed(range.index, 'image', url.trim());
-            }
+            openModal({
+              eyebrow: 'INSÉRER UNE IMAGE',
+              title: 'URL de l\'image',
+              size: 'sm',
+              body: fld('Lien direct *', 'url', 'imgUrl', '', 'https://i.imgur.com/...'),
+              footer: '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+                '<button class="btn btn-primary" onclick="insertMdtImage()">Insérer</button>'
+            });
           }
         }
       }
@@ -989,13 +992,13 @@ async function editMdtPage(pageId) {
 async function saveMdtPage(pageId) {
   var titre = document.getElementById('mdtEditTitle').value.trim();
   if (!titre) { toast('Le titre est requis.','error'); return; }
-  var contenu = _quill ? _quill.root.innerHTML : '';
+  var editorEl = document.querySelector('#mdtEditor .ql-editor');
+  var contenu = editorEl ? editorEl.innerHTML : (_quill ? _quill.root.innerHTML : '');
   try {
     var r = await DB.updateMdtPage(pageId, { titre: titre, contenu: contenu });
     if (r.error) throw r.error;
     toast('Page sauvegardée.','success');
     _mdtPages = await DB.getAllMdtPages();
-    renderMdtList();
     await openMdtPage(pageId);
   } catch(e) { toast(e.message,'error'); }
 }
@@ -1022,6 +1025,17 @@ function openMdtNewPage() {
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
       '<button class="btn btn-primary" onclick="createMdtPage()">Créer</button>'
   });
+}
+
+function insertMdtImage() {
+  var url = document.getElementById('imgUrl').value.trim();
+  if (!url) { toast('URL requise.','error'); return; }
+  closeModal();
+  if (_quill) {
+    var range = _quill.getSelection() || { index: _quill.getLength() };
+    _quill.insertEmbed(range.index, 'image', url);
+    _quill.setSelection(range.index + 1);
+  }
 }
 
 async function createMdtPage() {

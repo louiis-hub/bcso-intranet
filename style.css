@@ -231,6 +231,9 @@ select.form-control{cursor:pointer}
 .ql-toolbar button:hover .ql-stroke,.ql-toolbar button.ql-active .ql-stroke{stroke:var(--gold) !important}
 .ql-toolbar button:hover .ql-fill,.ql-toolbar button.ql-active .ql-fill{fill:var(--gold) !important}
 .ql-editor{min-height:420px;color:var(--t1)}
+.ql-editor img,.ql-view img{max-width:100%;height:auto;border-radius:6px;margin:6px 0;display:block}
+.ql-view p,.ql-view h1,.ql-view h2,.ql-view h3{margin-bottom:8px}
+.ql-view ul,.ql-view ol{padding-left:20px;margin-bottom:8px}
 .ql-snow .ql-picker{color:var(--t2) !important}
 .ql-snow .ql-picker-label::before{color:var(--t2)}
 
