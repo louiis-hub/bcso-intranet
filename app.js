@@ -15,6 +15,9 @@ var _mdtSelCat = null;
 var _mdtSelPage = null;
 var _vehicleCatId = null;
 var _vehiclePages = [];
+var _wikiCats  = {};
+var _wikiPages = {};
+var _wikiSlug  = null;
 
 var NAV = [
   { id: 'dashboard', icon: '🏛️', label: 'Tableau de bord' },
@@ -27,6 +30,10 @@ var NAV = [
   { group: 'DOCUMENTATION' },
   { id: 'mdt',      icon: '📚', label: 'Guide MDT' },
   { id: 'vehicles', icon: '🚗', label: 'Véhicules' },
+  { id: 'info',     icon: 'ℹ️',  label: 'Informations' },
+  { id: 'manuel',   icon: '📋', label: 'Manuel' },
+  { id: 'tenue',    icon: '👔', label: 'Tenues' },
+  { id: 'document', icon: '📄', label: 'Documents' },
   { divider: true, staffOnly: true },
   { group: 'ADMINISTRATION', staffOnly: true },
   { id: 'stats',    icon: '📈', label: 'Statistiques', staffOnly: true },
@@ -37,6 +44,7 @@ var NAV = [
 var PAGE_TITLES = {
   dashboard:'Tableau de bord', agents:'Agents', 'agent-profile':'Fiche agent',
   grades:'Grades', units:'Divisions', mdt:'Guide MDT', vehicles:'Véhicules',
+  info:'Informations', manuel:'Manuel', tenue:'Tenues', document:'Documents',
   stats:'Statistiques', search:'Recherche', settings:'Paramètres'
 };
 
@@ -198,7 +206,7 @@ async function navigate(page, pd) {
   _charts = {};
   _quill = null;
   setContent('<div class="loader-block"><div class="spinner"></div><p>Chargement…</p></div>');
-  var AGENT_ALLOWED = ['dashboard','agents','agent-profile','grades','units','mdt','vehicles'];
+  var AGENT_ALLOWED = ['dashboard','agents','agent-profile','grades','units','mdt','vehicles','info','manuel','tenue','document'];
   if (S.role === 'agent' && AGENT_ALLOWED.indexOf(page) === -1) {
     setContent('<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Accès restreint</div><div class="empty-sub">Cette section est réservée au personnel d\'encadrement.</div></div>');
     return;
@@ -212,6 +220,10 @@ async function navigate(page, pd) {
       units:          renderUnits,
       mdt:            renderMDT,
       vehicles:       renderVehicles,
+      info:           function(){ return renderWikiSection('info',     {title:'Informations', sub:'Informations générales du BCSO', icon:'ℹ️'}); },
+      manuel:         function(){ return renderWikiSection('manuel',   {title:'Manuel',       sub:'Procédures et protocoles opérationnels', icon:'📋'}); },
+      tenue:          function(){ return renderWikiSection('tenue',    {title:'Tenues',       sub:'Uniformes et équipements règlementaires', icon:'👔'}); },
+      document:       function(){ return renderWikiSection('document', {title:'Documents',    sub:'Documents et formulaires officiels', icon:'📄'}); },
       stats:          renderStats,
       search:         renderSearch,
       settings:       renderSettings
@@ -534,9 +546,8 @@ async function saveAgent(id) {
 async function renderAgentProfile() {
   var id = S.pd.id;
   if (!id) { navigate('agents'); return; }
-  var [ag, hist, armes] = await Promise.all([
+  var [ag, armes] = await Promise.all([
     DB.getAgent(id),
-    DB.getHistory(id),
     DB.getAgentArmes(id)
   ]);
   if (!ag) { navigate('agents'); return; }
@@ -547,12 +558,7 @@ async function renderAgentProfile() {
     { key:'ppa2', label:'PPA 2', val:ag.ppa2, date:ag.ppa2_date },
     { key:'ppa3', label:'PPA 3', val:ag.ppa3, date:ag.ppa3_date }
   ];
-  var quals = [
-    { key:'qual_cid',  label:'CID',  val:ag.qual_cid  },
-    { key:'qual_swat', label:'SWAT', val:ag.qual_swat },
-    { key:'qual_tu',   label:'TU',   val:ag.qual_tu   },
-    { key:'qual_prd',  label:'PRD',  val:ag.qual_prd  }
-  ];
+  var agUnites = ag.unites || [];
 
   var ppaHtml = ppas.map(function(p){
       return '<div class="ppa-item' + (p.val?' checked':'') + '">' +
@@ -564,17 +570,10 @@ async function renderAgentProfile() {
       '</div>';
     }).join('');
 
-  var qualHtml = quals.map(function(q){
-    return '<span class="qual-badge qual-' + q.label + (q.val?' earned':'') + '">' + q.label + '</span>';
+  var qualHtml = _units.map(function(u){
+    var active = agUnites.includes(u.code);
+    return '<span class="qual-badge qual-' + u.code + (active?' earned':'') + '">' + u.code + '</span>';
   }).join('');
-
-  var histHtml = hist.length ? hist.map(function(h){
-    return '<div class="timeline-item"><div class="tl-dot ' + typeDotClass(h.type) + '">' + typeIcon(h.type) + '</div>' +
-      '<div style="flex:1"><div class="tl-title">' + esc(h.titre) + '</div>' +
-      '<div class="tl-meta">' + fmt(h.date) + (h.description ? ' · ' + esc(h.description).slice(0,60) : '') + '</div></div>' +
-      (isAdmin() ? '<button class="btn btn-danger btn-sm btn-icon" onclick="delHistory(\'' + h.id + '\',\'' + id + '\')">✕</button>' : '') +
-    '</div>';
-  }).join('') : '<div class="empty-state" style="padding:30px"><div class="empty-icon">📋</div><div class="empty-title">Aucun historique</div></div>';
 
   setContent(
     '<button class="btn btn-ghost btn-sm mb-14" onclick="navigate(\'agents\')">← Retour</button>' +
@@ -650,14 +649,6 @@ async function renderAgentProfile() {
         '</div>' +
 
       '</div>' +
-
-      '<div class="card" style="height:fit-content">' +
-        '<div class="flex-between mb-14">' +
-          '<div class="card-head" style="margin:0"><div class="card-icon">⏱️</div><div><div class="card-title">Historique</div></div></div>' +
-          (canWrite() ? '<button class="btn btn-outline btn-sm" onclick="openHistModal(\'' + id + '\')">+ Ajouter</button>' : '') +
-        '</div>' +
-        '<div class="timeline">' + histHtml + '</div>' +
-      '</div>' +
     '</div>'
   );
 }
@@ -730,14 +721,7 @@ async function openPPAModal(agentId) {
           ppaCheckDate('ppaCk3','PPA 3',ag.ppa3,ag.ppa3_date,'ppaDate3') +
         '</div>' +
       '</div>' +
-      '<div class="form-group"><label class="form-label">Divisions</label>' +
-        '<div style="display:flex;flex-direction:column;gap:6px">' +
-          ppaCheck('qkCID','CID',ag.qual_cid) +
-          ppaCheck('qkSWAT','SWAT',ag.qual_swat) +
-          ppaCheck('qkTU','Traffic Unit (TU)',ag.qual_tu) +
-          ppaCheck('qkPRD','PRD',ag.qual_prd) +
-        '</div>' +
-      '</div>',
+      '',
     footer:
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
       '<button class="btn btn-primary" onclick="savePPAModal(\'' + agentId + '\')">Enregistrer</button>'
@@ -767,11 +751,7 @@ async function savePPAModal(agentId) {
     ppa1_date: document.getElementById('ppaCk1').checked ? (document.getElementById('ppaDate1').value || null) : null,
     ppa2_date: document.getElementById('ppaCk2').checked ? (document.getElementById('ppaDate2').value || null) : null,
     ppa3_date: document.getElementById('ppaCk3').checked ? (document.getElementById('ppaDate3').value || null) : null,
-    qual_pa:   document.getElementById('qkPA').checked,
-    qual_cid:  document.getElementById('qkCID').checked,
-    qual_swat: document.getElementById('qkSWAT').checked,
-    qual_tu:   document.getElementById('qkTU').checked,
-    qual_prd:  document.getElementById('qkPRD').checked
+    qual_pa: document.getElementById('qkPA').checked
   };
   try {
     var r = await DB.updateAgent(agentId, data);
@@ -1303,6 +1283,123 @@ async function createVehiclePage() {
 }
 
 // ══ DISCIPLINARY ═══════════════════════════════════════════════════
+// ══ WIKI GÉNÉRIQUE ══════════════════════════════════════════════════
+async function renderWikiSection(slug, cfg) {
+  _wikiSlug = slug;
+  if (!_wikiCats[slug]) _wikiCats[slug] = await DB.getOrCreateWikiCat(slug);
+  _wikiPages[slug] = await DB.getAllVehiclePages(_wikiCats[slug]);
+  setContent(
+    '<div class="flex-between mb-20 flex-wrap gap-8">' +
+      '<div><h1 style="font-size:1.4rem">' + cfg.title + '</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">' + cfg.sub + '</p></div>' +
+      (canWrite() ? '<button class="btn btn-primary btn-sm" onclick="openWikiNewPage()">+ Nouvelle page</button>' : '') +
+    '</div>' +
+    '<div class="mdt-layout">' +
+      '<aside class="mdt-sidebar"><div id="wikiList"></div></aside>' +
+      '<div class="mdt-main" id="wikiMain">' +
+        '<div class="empty-state"><div class="empty-icon">' + cfg.icon + '</div><div class="empty-title">S\xE9lectionnez une page</div></div>' +
+      '</div>' +
+    '</div>'
+  );
+  renderWikiList(slug, cfg.icon);
+}
+function renderWikiList(slug, icon) {
+  var el = document.getElementById('wikiList');
+  if (!el) return;
+  var pages = _wikiPages[slug] || [];
+  if (!pages.length) {
+    el.innerHTML = '<p style="color:var(--t3);font-size:.8rem;text-align:center;padding:20px 8px">Aucune page.' + (canWrite() ? '<br>Cliquez sur "+ Nouvelle page".' : '') + '</p>';
+    return;
+  }
+  el.innerHTML = pages.map(function(p){
+    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openWikiPage(\'' + p.id + '\')">' + (icon||'📄') + ' ' + esc(p.titre) + '</div>';
+  }).join('');
+}
+async function openWikiPage(pageId) {
+  _mdtSelPage = pageId;
+  renderWikiList(_wikiSlug);
+  var page = await DB.getMdtPage(pageId);
+  if (!page) return;
+  var main = document.getElementById('wikiMain');
+  if (!main) return;
+  main.innerHTML =
+    '<div class="card mb-14"><div class="flex-between flex-wrap gap-8">' +
+      '<div><h2 style="font-size:1.3rem">' + esc(page.titre) + '</h2>' +
+      '<div class="mono" style="font-size:.64rem;color:var(--t3);margin-top:3px">Modifi\xE9 le ' + fmt(page.updated_at) + '</div></div>' +
+      (canWrite() ? '<div style="display:flex;gap:8px">' +
+        '<button class="btn btn-outline btn-sm" onclick="editWikiPage(\'' + pageId + '\')">✏️ Modifier</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="delWikiPage(\'' + pageId + '\')">Supprimer</button>' +
+      '</div>' : '') +
+    '</div></div>' +
+    '<div class="card ql-view" style="min-height:300px;font-size:.9rem;line-height:1.7;color:var(--t1)">' +
+      (page.contenu || '<p class="text-muted">Page vide. Cliquez sur "Modifier".</p>') +
+    '</div>';
+}
+async function editWikiPage(pageId) {
+  var page = await DB.getMdtPage(pageId);
+  if (!page) return;
+  var main = document.getElementById('wikiMain');
+  main.innerHTML =
+    '<div class="card mb-14"><div class="flex-between flex-wrap gap-8">' +
+      '<input class="form-control" id="wikiEditTitle" value="' + esc(page.titre) + '" style="font-size:1.1rem;font-weight:700;max-width:400px">' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="btn btn-ghost btn-sm" onclick="openWikiPage(\'' + pageId + '\')">Annuler</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="saveWikiPage(\'' + pageId + '\')">💾 Sauvegarder</button>' +
+      '</div>' +
+    '</div></div>' +
+    '<div id="wikiEditor"></div>';
+  _quill = new Quill('#wikiEditor', {
+    theme: 'snow',
+    modules: { toolbar: { container: [[{header:[1,2,3,false]}],['bold','italic','underline','strike'],[{list:'ordered'},{list:'bullet'}],['blockquote','link','image'],[{color:[]},{align:[]}]], handlers:{ image:function(){ openModal({ eyebrow:'INS\xC9RER UNE IMAGE', title:"URL de l'image", size:'sm', body:fld('Lien direct *','url','imgUrl','','https://i.imgur.com/...'), footer:'<button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="insertMdtImage()">Ins\xE9rer</button>' }); } } } }
+  });
+  if (page.contenu) _quill.clipboard.dangerouslyPasteHTML(0, page.contenu);
+}
+async function saveWikiPage(pageId) {
+  var titre = document.getElementById('wikiEditTitle').value.trim();
+  if (!titre) { toast('Le titre est requis.','error'); return; }
+  var editorEl = document.querySelector('#wikiEditor .ql-editor');
+  var contenu = editorEl ? editorEl.innerHTML : (_quill ? _quill.root.innerHTML : '');
+  try {
+    var r = await DB.updateMdtPage(pageId, { titre: titre, contenu: contenu });
+    if (r.error) throw r.error;
+    toast('Page sauvegard\xE9e.','success');
+    _wikiPages[_wikiSlug] = await DB.getAllVehiclePages(_wikiCats[_wikiSlug]);
+    await openWikiPage(pageId);
+  } catch(e) { toast(e.message,'error'); }
+}
+async function delWikiPage(pageId) {
+  if (!confirm('Supprimer cette page ?')) return;
+  var r = await DB.deleteMdtPage(pageId);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  _mdtSelPage = null;
+  toast('Page supprim\xE9e.','info');
+  _wikiPages[_wikiSlug] = await DB.getAllVehiclePages(_wikiCats[_wikiSlug]);
+  renderWikiList(_wikiSlug);
+  var main = document.getElementById('wikiMain');
+  if (main) main.innerHTML = '<div class="empty-state"><div class="empty-icon">📄</div><div class="empty-title">Page supprim\xE9e</div></div>';
+}
+function openWikiNewPage() {
+  openModal({
+    eyebrow: 'NOUVELLE PAGE',
+    title: 'Cr\xE9er une page',
+    size: 'sm',
+    body: fld('Titre *','text','wikiNewTitre','','Ex : Proc\xE9dure d\'arrestation'),
+    footer: '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="createWikiPage()">Cr\xE9er</button>'
+  });
+}
+async function createWikiPage() {
+  var titre = document.getElementById('wikiNewTitre').value.trim();
+  if (!titre) { toast('Titre requis.','error'); return; }
+  var catId = _wikiCats[_wikiSlug];
+  try {
+    var r = await DB.createVehiclePage(catId, { titre: titre, contenu: '', ordre: (_wikiPages[_wikiSlug]||[]).length });
+    if (r.error) throw r.error;
+    closeModal(); toast('Page cr\xE9\xE9e.','success');
+    _wikiPages[_wikiSlug] = await DB.getAllVehiclePages(catId);
+    renderWikiList(_wikiSlug);
+    if (r.data) await openWikiPage(r.data.id);
+  } catch(e) { toast(e.message,'error'); }
+}
+
 // ══ STATS ══════════════════════════════════════════════════════════
 async function renderStats() {
   var { agents, recentHist } = await DB.getStats();

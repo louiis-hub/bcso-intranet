@@ -105,6 +105,13 @@ var DB = {
       .select('id,titre,ordre,updated_at').is('categorie_id', null).order('ordre').order('titre');
     return data || [];
   },
+  async getOrCreateWikiCat(slug) {
+    var name = '__wiki_' + slug + '__';
+    var { data: ex } = await getDb().from('mdt_categories').select('id').eq('nom', name).maybeSingle();
+    if (ex) return ex.id;
+    var { data: cr } = await getDb().from('mdt_categories').insert({ nom: name, emoji: '📄', ordre: -997 }).select().single();
+    return cr ? cr.id : null;
+  },
   async getOrCreateVehicleCat() {
     var { data: ex } = await getDb().from('mdt_categories').select('id').eq('nom','__vehicles__').maybeSingle();
     if (ex) return ex.id;
