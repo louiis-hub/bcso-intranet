@@ -9,6 +9,7 @@ var _charts = {};
 var _agentPage = 1;
 var _agentFilters = { statut: '', grade: '', unite: '', search: '' };
 var _grades = [];
+var _units  = [];
 var _mdtCats = [];
 var _mdtSelCat = null;
 var _mdtSelPage = null;
@@ -113,6 +114,7 @@ async function afterLogin(user, session) {
     if (!S.role) { await DB.logout(); showLogin(); return; }
   }
   _grades = await DB.getGrades();
+  _units  = await DB.getUnits();
   showApp();
   await navigate('dashboard');
 }
@@ -377,9 +379,9 @@ async function renderAgents() {
 
   var gradeOpts = '<option value="">Tous les grades</option>' +
     _grades.map(function(g){ return '<option value="' + esc(g.nom) + '"' + (_agentFilters.grade===g.nom?' selected':'') + '>' + esc(g.nom) + '</option>'; }).join('');
-  var uniteOpts = '<option value="">Toutes les unités</option>' +
-    ['PA','CID','SWAT','TU','PRD'].map(function(u){
-      return '<option value="' + u + '"' + (_agentFilters.unite===u?' selected':'') + '>' + u + '</option>';
+  var uniteOpts = '<option value="">Toutes les divisions</option>' +
+    _units.map(function(u){
+      return '<option value="' + esc(u.code) + '"' + (_agentFilters.unite===u.code?' selected':'') + '>' + esc(u.code) + ' — ' + esc(u.nom) + '</option>';
     }).join('');
 
   var rows = agents.length ? agents.map(function(a) {
@@ -447,10 +449,9 @@ async function openAgentModal(id) {
     return '<option value="' + esc(g.nom) + '"' + (v.grade===g.nom?' selected':'') + '>' + esc(g.nom) + '</option>';
   }).join('');
 
-  var unites = ['PA','CID','SWAT','TU','PRD'];
-  var uniteChecks = unites.map(function(u){
-    var chk = (v.unites||[]).includes(u) ? ' checked' : '';
-    return '<label class="form-check"><input type="checkbox" name="unite" value="' + u + '"' + chk + '><span class="form-check-lbl">' + u + '</span></label>';
+  var uniteChecks = _units.map(function(u){
+    var chk = (v.unites||[]).includes(u.code) ? ' checked' : '';
+    return '<label class="form-check"><input type="checkbox" name="unite" value="' + esc(u.code) + '"' + chk + '><span class="form-check-lbl">' + esc(u.code) + ' — ' + esc(u.nom) + '</span></label>';
   }).join('');
 
   openModal({
@@ -879,6 +880,7 @@ async function saveUnit(id) {
   try {
     var r = isNew ? await DB.createUnit(data) : await DB.updateUnit(id, data);
     if (r.error) throw r.error;
+    _units = await DB.getUnits();
     closeModal(); toast(isNew ? 'Division créée.' : 'Division mise à jour.','success'); await renderUnits();
   } catch(e) { toast(e.message,'error'); }
 }
@@ -887,6 +889,7 @@ async function deleteUnit(id, nom) {
   if (!confirm('Supprimer la division "' + nom + '" ?')) return;
   var r = await DB.deleteUnit(id);
   if (r.error) { toast(r.error.message,'error'); return; }
+  _units = await DB.getUnits();
   toast('Division supprimée.','info'); await renderUnits();
 }
 
@@ -1167,7 +1170,8 @@ async function renderStats() {
   var gradeCounts = {};
   agents.forEach(function(a){ gradeCounts[a.grade] = (gradeCounts[a.grade]||0)+1; });
 
-  var unitCounts = { PA:0, CID:0, SWAT:0, TU:0, PRD:0 };
+  var unitCounts = {};
+  _units.forEach(function(u){ unitCounts[u.code] = 0; });
   agents.forEach(function(a){ (a.unites||[]).forEach(function(u){ if(unitCounts[u]!==undefined) unitCounts[u]++; }); });
 
   setContent(
