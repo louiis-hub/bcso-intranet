@@ -65,7 +65,7 @@ var DB = {
 
   // ── Grades ───────────────────────────────────────────────────
   async getGrades() {
-    var { data } = await getDb().from('grades').select('*').order('ordre');
+    var { data } = await getDb().from('grades').select('*').order('ordre', { ascending: false });
     return data || [];
   },
   async createGrade(data) { return getDb().from('grades').insert(data); },
@@ -77,7 +77,9 @@ var DB = {
     var { data } = await getDb().from('units').select('*').order('code');
     return data || [];
   },
+  async createUnit(data) { return getDb().from('units').insert(data).select().single(); },
   async updateUnit(id, data) { return getDb().from('units').update(data).eq('id', id); },
+  async deleteUnit(id) { return getDb().from('units').delete().eq('id', id); },
 
   // ── Agent history ────────────────────────────────────────────
   async getHistory(agentId) {

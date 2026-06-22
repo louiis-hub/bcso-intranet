@@ -19,21 +19,21 @@ var NAV = [
   { group: 'RESSOURCES HUMAINES' },
   { id: 'agents',   icon: '👮', label: 'Agents' },
   { id: 'grades',   icon: '🎖️', label: 'Grades' },
-  { id: 'units',    icon: '🚔', label: 'Unités' },
+  { id: 'units',    icon: '🚔', label: 'Divisions' },
   { divider: true },
   { group: 'DOCUMENTATION' },
   { id: 'mdt',      icon: '📚', label: 'Guide MDT' },
-  { divider: true },
-  { group: 'ADMINISTRATION' },
-  { id: 'disciplinary', icon: '📝', label: 'Disciplinaire' },
-  { id: 'stats',    icon: '📈', label: 'Statistiques' },
-  { id: 'search',   icon: '🔍', label: 'Recherche' },
-  { id: 'settings', icon: '⚙️', label: 'Paramètres' },
+  { divider: true, staffOnly: true },
+  { group: 'ADMINISTRATION', staffOnly: true },
+  { id: 'disciplinary', icon: '📝', label: 'Disciplinaire', staffOnly: true },
+  { id: 'stats',    icon: '📈', label: 'Statistiques', staffOnly: true },
+  { id: 'search',   icon: '🔍', label: 'Recherche', staffOnly: true },
+  { id: 'settings', icon: '⚙️', label: 'Paramètres', staffOnly: true },
 ];
 
 var PAGE_TITLES = {
   dashboard:'Tableau de bord', agents:'Agents', 'agent-profile':'Fiche agent',
-  grades:'Grades', units:'Unités', mdt:'Guide MDT',
+  grades:'Grades', units:'Divisions', mdt:'Guide MDT',
   disciplinary:'Disciplinaire', stats:'Statistiques', search:'Recherche', settings:'Paramètres'
 };
 
@@ -70,18 +70,19 @@ async function doDiscordLogin() {
 }
 
 async function getDiscordRole(token) {
-  if (!token) return 'agent';
+  if (!token) return null;
   try {
     var res = await fetch('https://discord.com/api/users/@me/guilds/' + GUILD_ID + '/member', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    if (!res.ok) return 'agent';
+    if (!res.ok) return null;
     var member = await res.json();
     var roles = member.roles || [];
     if (ROLE_ADMIN_IDS.some(function(r){ return roles.indexOf(r) !== -1; })) return 'admin';
     if (roles.indexOf(ROLE_ACADEMY_ID) !== -1) return 'academy';
-    return 'agent';
-  } catch(e) { return 'agent'; }
+    if (roles.indexOf(ROLE_AGENT_ID) !== -1) return 'agent';
+    return null;
+  } catch(e) { return null; }
 }
 
 async function afterLogin(user, session) {
@@ -93,15 +94,23 @@ async function afterLogin(user, session) {
   var providerToken = session && session.provider_token;
   if (providerToken) {
     S.role = await getDiscordRole(providerToken);
+    if (!S.role) {
+      await DB.logout();
+      showLogin();
+      var errEl = document.getElementById('loginErr');
+      if (errEl) { errEl.textContent = '⚠ Accès refusé — vous n\'avez pas les rôles requis sur le serveur Discord.'; errEl.classList.add('show'); }
+      return;
+    }
     await DB.upsertAppUser({
       user_id: user.id,
-      nom: (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.global_name)) || '',
+      nom: (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.global_name || user.user_metadata.name)) || '',
       prenom: '',
       app_role: S.role
     });
   } else {
     var appUser = await DB.getAppUser(user.id);
-    S.role = (appUser && appUser.app_role) || 'agent';
+    S.role = (appUser && appUser.app_role) || null;
+    if (!S.role) { await DB.logout(); showLogin(); return; }
   }
   _grades = await DB.getGrades();
   showApp();
@@ -132,8 +141,10 @@ function showApp() {
 
 // ── Navigation ─────────────────────────────────────────────────────
 function buildNav() {
+  var isStaff = S.role === 'admin' || S.role === 'academy';
   var html = '';
   NAV.forEach(function(item) {
+    if (item.staffOnly && !isStaff) return;
     if (item.divider) { html += '<div class="nav-divider"></div>'; return; }
     if (item.group)   { html += '<div class="nav-group">' + item.group + '</div>'; return; }
     html += '<div class="nav-item" data-page="' + item.id + '" onclick="navigate(\'' + item.id + '\')">' +
@@ -180,6 +191,11 @@ async function navigate(page, pd) {
   _charts = {};
   _quill = null;
   setContent('<div class="loader-block"><div class="spinner"></div><p>Chargement…</p></div>');
+  var AGENT_ALLOWED = ['dashboard','agents','agent-profile','grades','units','mdt'];
+  if (S.role === 'agent' && AGENT_ALLOWED.indexOf(page) === -1) {
+    setContent('<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Accès restreint</div><div class="empty-sub">Cette section est réservée au personnel d\'encadrement.</div></div>');
+    return;
+  }
   try {
     var renderers = {
       dashboard:      renderDashboard,
@@ -731,7 +747,7 @@ async function renderGrades() {
 
   var rows = _grades.length ? _grades.map(function(g, i){
     return '<tr>' +
-      '<td class="mono text-gold" style="width:40px">' + g.ordre + '</td>' +
+      '<td class="mono text-gold" style="width:40px">' + (i+1) + '</td>' +
       '<td style="font-weight:600;color:var(--t0)">' + esc(g.nom) + '</td>' +
       '<td class="mono">' + esc(g.abrev||'—') + '</td>' +
       '<td>' + (gradeCounts[g.nom]||0) + ' agent(s)</td>' +
@@ -745,7 +761,7 @@ async function renderGrades() {
 
   setContent(
     '<div class="flex-between mb-20 flex-wrap gap-8">' +
-      '<div><h1 style="font-size:1.4rem">Grades</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Hiérarchie du BCSO</p></div>' +
+      '<div><h1 style="font-size:1.4rem">Grades</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Hiérarchie du BCSO — du plus haut au plus bas</p></div>' +
       (isAdmin() ? '<button class="btn btn-primary btn-sm" onclick="openGradeModal(null)">+ Ajouter un grade</button>' : '') +
     '</div>' +
     '<div class="card" style="padding:0;overflow:hidden"><div class="table-wrap"><table>' +
@@ -792,7 +808,7 @@ async function deleteGrade(id, nom) {
   toast('Grade supprimé.','info'); _grades = await DB.getGrades(); await renderGrades();
 }
 
-// ══ UNITS ══════════════════════════════════════════════════════════
+// ══ DIVISIONS ══════════════════════════════════════════════════════
 async function renderUnits() {
   var [units, agents] = await Promise.all([DB.getUnits(), DB.getAgents()]);
 
@@ -804,7 +820,7 @@ async function renderUnits() {
       '<div class="card-head">' +
         '<div class="card-icon"><span class="badge ' + cls + '" style="font-size:.9rem;padding:4px 10px">' + esc(u.code) + '</span></div>' +
         '<div style="flex:1"><div class="card-title">' + esc(u.nom) + '</div><div class="card-sub">' + members.length + ' MEMBRE(S)</div></div>' +
-        (isAdmin() ? '<button class="btn btn-ghost btn-sm" onclick="openUnitModal(\'' + u.id + '\')">✏️</button>' : '') +
+        (isAdmin() ? '<button class="btn btn-ghost btn-sm" onclick="openUnitModal(\'' + u.id + '\')">✏️</button> <button class="btn btn-danger btn-sm" onclick="deleteUnit(\'' + u.id + '\',\'' + esc(u.nom) + '\')">✕</button>' : '') +
       '</div>' +
       '<p style="font-size:.84rem;color:var(--t2);margin-bottom:14px">' + esc(u.description||'—') + '</p>' +
       '<div class="divider"></div>' +
@@ -816,43 +832,62 @@ async function renderUnits() {
   }).join('');
 
   setContent(
-    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Unités</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Divisions spécialisées du BCSO</p></div></div>' +
+    '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Divisions</h1><p class="text-muted" style="font-size:.82rem;margin-top:3px">Divisions spécialisées du BCSO</p></div>' +
+    (isAdmin() ? '<button class="btn btn-primary btn-sm" onclick="openUnitModal(null)">+ Ajouter une division</button>' : '') +
+    '</div>' +
     '<div class="page-grid2">' + html + '</div>'
   );
 }
 
 function openUnitModal(id) {
+  var isNew = !id;
   openModal({
-    eyebrow: 'MODIFIER L\'UNITÉ',
-    title: 'Configuration de l\'unité',
+    eyebrow: isNew ? 'NOUVELLE DIVISION' : 'MODIFIER LA DIVISION',
+    title: isNew ? 'Ajouter une division' : 'Configuration de la division',
     size: 'sm',
     body:
+      (isNew ? '<div class="form-grid2">' + fld('Code *', 'text', 'uCode', '', 'Ex: CID') + fld('Nom *', 'text', 'uNom', '', 'Ex: Criminal Investigation Div.') + '</div>' : '') +
       fld('Description', 'text', 'uDesc', '') +
       '<div class="form-group"><label class="form-label">Conditions d\'accès</label><textarea class="form-control" id="uCond" rows="3"></textarea></div>',
     footer:
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
-      '<button class="btn btn-primary" onclick="saveUnit(\'' + id + '\')">Enregistrer</button>'
+      '<button class="btn btn-primary" onclick="saveUnit(\'' + (id||'') + '\')">Enregistrer</button>'
   });
-  // pre-fill after modal is open
-  DB.getUnits().then(function(units) {
-    var u = units.find(function(x){ return x.id==id; });
-    if (u) {
-      document.getElementById('uDesc').value = u.description||'';
-      document.getElementById('uCond').value = u.conditions_acces||'';
-    }
-  });
+  if (!isNew) {
+    DB.getUnits().then(function(units) {
+      var u = units.find(function(x){ return x.id==id; });
+      if (u) {
+        document.getElementById('uDesc').value = u.description||'';
+        document.getElementById('uCond').value = u.conditions_acces||'';
+      }
+    });
+  }
 }
 
 async function saveUnit(id) {
+  var isNew = !id;
   var data = {
     description: document.getElementById('uDesc').value.trim()||null,
     conditions_acces: document.getElementById('uCond').value.trim()||null
   };
+  if (isNew) {
+    var code = document.getElementById('uCode').value.trim().toUpperCase();
+    var nom  = document.getElementById('uNom').value.trim();
+    if (!code || !nom) { toast('Code et nom requis.','error'); return; }
+    data.code = code; data.nom = nom;
+  }
   try {
-    var r = await DB.updateUnit(id, data);
+    var r = isNew ? await DB.createUnit(data) : await DB.updateUnit(id, data);
     if (r.error) throw r.error;
-    closeModal(); toast('Unité mise à jour.','success'); await renderUnits();
+    closeModal(); toast(isNew ? 'Division créée.' : 'Division mise à jour.','success'); await renderUnits();
   } catch(e) { toast(e.message,'error'); }
+}
+
+async function deleteUnit(id, nom) {
+  if (!confirm('Supprimer la division "' + nom + '" ?')) return;
+  var r = await DB.deleteUnit(id);
+  if (r.error) { toast(r.error.message,'error'); return; }
+  toast('Division supprimée.','info'); await renderUnits();
 }
 
 // ══ MDT ════════════════════════════════════════════════════════════
@@ -982,8 +1017,21 @@ async function editMdtPage(pageId) {
 
   _quill = new Quill('#mdtEditor', {
     theme: 'snow',
-    modules: { toolbar: [[{'header':[1,2,3,false]}],'bold','italic','underline','strike',
-      [{'list':'ordered'},{'list':'bullet'}],'blockquote','code-block','link','image',{'color':[]},{'align':[]}] }
+    modules: {
+      toolbar: {
+        container: [[{'header':[1,2,3,false]}],'bold','italic','underline','strike',
+          [{'list':'ordered'},{'list':'bullet'}],'blockquote','link','image',{'color':[]},{'align':[]}],
+        handlers: {
+          image: function() {
+            var url = prompt('URL de l\'image (lien direct) :');
+            if (url) {
+              var range = _quill.getSelection() || { index: _quill.getLength() };
+              _quill.insertEmbed(range.index, 'image', url.trim());
+            }
+          }
+        }
+      }
+    }
   });
   if (page.contenu) _quill.root.innerHTML = page.contenu;
 }
