@@ -141,7 +141,8 @@ function buildNav() {
   });
   document.getElementById('sidebarNav').innerHTML = html;
 
-  var n = S.appUser ? S.appUser.prenom + ' ' + S.appUser.nom : S.user.email;
+  var discordName = S.user && S.user.user_metadata && (S.user.user_metadata.full_name || S.user.user_metadata.name || S.user.user_metadata.user_name);
+  var n = discordName || (S.appUser ? (S.appUser.prenom + ' ' + S.appUser.nom).trim() : S.user.email);
   var initials = n.split(' ').map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2);
   var roleLabel = { admin:'ADMIN', academy:'ACADÉMIE', agent:'AGENT' }[S.role] || S.role.toUpperCase();
   document.getElementById('sidebarFooter').innerHTML =
@@ -1365,7 +1366,8 @@ async function openMdtPageFromSearch(catId, pageId) {
 async function renderSettings() {
   var appUsers = isAdmin() ? await DB.getAppUsers() : [];
   var me = S.appUser;
-  var email = S.user ? S.user.email : '—';
+  var discordName = S.user && S.user.user_metadata && (S.user.user_metadata.full_name || S.user.user_metadata.name || S.user.user_metadata.user_name);
+  var displayName = discordName || (S.user ? S.user.email : '—');
 
   var usersHtml = '';
   if (isAdmin() && appUsers.length) {
@@ -1388,7 +1390,7 @@ async function renderSettings() {
     '<div class="flex-between mb-20"><div><h1 style="font-size:1.4rem">Paramètres</h1></div></div>' +
     '<div class="card">' +
       '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Mon compte</div></div></div>' +
-      infoRow('Email', email) +
+      infoRow('Discord', displayName) +
       infoRow('Nom', me ? (me.prenom + ' ' + me.nom).trim() || '—' : '—') +
       infoRow('Rôle', roleBadge(S.role)) +
     '</div>' +
