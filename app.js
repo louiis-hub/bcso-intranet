@@ -651,13 +651,16 @@ async function renderAgentProfile() {
         '<div class="card">' +
           '<div class="flex-between mb-10">' +
             '<div class="card-head" style="margin:0"><div class="card-icon">📚</div><div><div class="card-title">Formations PPA</div></div></div>' +
-            (isAdmin() && ag.statut !== 'Archivé' ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">✏️ PPA / Qualif.</button>' : '') +
+            (isAdmin() && ag.statut !== 'Archivé' ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">✏️ PPA</button>' : '') +
           '</div>' +
           '<div class="ppa-grid">' + ppaHtml + '</div>' +
           (function(){
             var b = [ag.blame1,ag.blame2,ag.blame3];
             return '<div style="margin-top:14px;border-top:1px solid var(--border0);padding-top:12px">' +
-              '<div style="font-size:.72rem;color:var(--red);font-weight:700;letter-spacing:.8px;margin-bottom:8px">⚠️ BLÂMES</div>' +
+              '<div class="flex-between" style="margin-bottom:8px">' +
+                '<div style="font-size:.72rem;color:var(--red);font-weight:700;letter-spacing:.8px">⚠️ BLÂMES</div>' +
+                (isAdmin() && ag.statut !== 'Archivé' ? '<button class="btn btn-ghost btn-sm" style="font-size:.72rem;padding:2px 8px" onclick="openBlameModal(\'' + id + '\')">✏️ Blâmes</button>' : '') +
+              '</div>' +
               '<div style="display:flex;gap:8px">' +
                 [1,2,3].map(function(n){
                   var active = b[n-1];
@@ -780,13 +783,6 @@ async function openPPAModal(agentId) {
           ppaCheckDate('ppaCk2','PPA 2',ag.ppa2,ag.ppa2_date,'ppaDate2') +
           ppaCheckDate('ppaCk3','PPA 3',ag.ppa3,ag.ppa3_date,'ppaDate3') +
         '</div>' +
-      '</div>' +
-      '<div class="form-group"><label class="form-label" style="color:var(--red)">⚠️ Blâmes</label>' +
-        '<div style="display:flex;flex-direction:column;gap:10px">' +
-          ppaCheck('blameCk1','Blâme 1',ag.blame1) +
-          ppaCheck('blameCk2','Blâme 2',ag.blame2) +
-          ppaCheck('blameCk3','Blâme 3',ag.blame3) +
-        '</div>' +
       '</div>',
     footer:
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
@@ -817,10 +813,7 @@ async function savePPAModal(agentId) {
     ppa1_date: document.getElementById('ppaCk1').checked ? (document.getElementById('ppaDate1').value || null) : null,
     ppa2_date: document.getElementById('ppaCk2').checked ? (document.getElementById('ppaDate2').value || null) : null,
     ppa3_date: document.getElementById('ppaCk3').checked ? (document.getElementById('ppaDate3').value || null) : null,
-    qual_pa: document.getElementById('qkPA').checked,
-    blame1: document.getElementById('blameCk1').checked,
-    blame2: document.getElementById('blameCk2').checked,
-    blame3: document.getElementById('blameCk3').checked
+    qual_pa: document.getElementById('qkPA').checked
   };
   try {
     var r = await DB.updateAgent(agentId, data);
@@ -829,6 +822,40 @@ async function savePPAModal(agentId) {
     toast('Formations mises à jour.','success');
     await renderAgentProfile();
   } catch(e) { toast(e.message,'error'); }
+}
+
+async function openBlameModal(agentId) {
+  var ag = await DB.getAgent(agentId);
+  if (!ag) return;
+  openModal({
+    eyebrow: 'SANCTIONS',
+    title: ag.prenom + ' ' + ag.nom,
+    body:
+      '<div class="form-group"><label class="form-label" style="color:var(--red)">⚠️ Blâmes</label>' +
+        '<div style="display:flex;flex-direction:column;gap:10px">' +
+          ppaCheck('blameCk1','Blâme 1',ag.blame1) +
+          ppaCheck('blameCk2','Blâme 2',ag.blame2) +
+          ppaCheck('blameCk3','Blâme 3',ag.blame3) +
+        '</div>' +
+      '</div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveBlameModal(\'' + agentId + '\')">Enregistrer</button>'
+  });
+}
+async function saveBlameModal(agentId) {
+  var data = {
+    blame1: document.getElementById('blameCk1').checked,
+    blame2: document.getElementById('blameCk2').checked,
+    blame3: document.getElementById('blameCk3').checked
+  };
+  try {
+    var r = await DB.updateAgent(agentId, data);
+    if (r.error) throw r.error;
+    closeModal();
+    toast('Blâmes mis à jour.', 'success');
+    await renderAgentProfile();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 async function openAddArmeModal(agentId) {
