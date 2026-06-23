@@ -427,8 +427,42 @@ async function renderDashboard() {
           '</div>' +
         '</div>' +
       '</div>' +
-    '</div>'
+    '</div>' +
+    renderOrgChart(agents)
   );
+}
+
+function renderOrgChart(agents) {
+  var gradesSorted = _grades.slice().sort(function(a,b){ return (b.ordre||0)-(a.ordre||0); });
+  var rows = gradesSorted.map(function(g) {
+    var members = agents.filter(function(a){ return a.grade === g.nom && a.statut !== 'Archivé'; });
+    if (!members.length) return '';
+    var chips = members.map(function(a) {
+      var dot = a.statut === 'En service' ? 'var(--green)' : a.statut === 'Suspendu' ? 'var(--orange)' : 'var(--t3)';
+      return '<div onclick="navigate(\'agent-profile\',{id:\'' + a.id + '\'})" style="display:flex;align-items:center;gap:6px;background:var(--bg1);border:1px solid var(--border0);border-radius:20px;padding:5px 12px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--border0)\'">' +
+        '<div style="width:7px;height:7px;border-radius:50%;background:' + dot + ';flex-shrink:0"></div>' +
+        '<span style="font-size:.78rem;font-weight:600;color:var(--t1)">' + esc(a.prenom + ' ' + a.nom) + '</span>' +
+        '<span style="font-size:.7rem;color:var(--t3)">' + esc(a.matricule) + '</span>' +
+      '</div>';
+    }).join('');
+    return '<div style="display:flex;align-items:flex-start;gap:0;position:relative">' +
+      '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:160px">' +
+        '<div style="background:var(--bg2);border:1px solid var(--border0);border-radius:var(--rSm);padding:6px 14px;text-align:center;min-width:120px">' +
+          '<div style="font-size:.7rem;color:var(--gold);font-weight:700;letter-spacing:.6px">' + esc(g.abreviation||g.nom) + '</div>' +
+          '<div style="font-size:.78rem;color:var(--t2);margin-top:1px">' + esc(g.nom) + '</div>' +
+        '</div>' +
+        '<div style="width:2px;flex:1;background:var(--border0);min-height:12px"></div>' +
+      '</div>' +
+      '<div style="width:30px;height:2px;background:var(--border0);margin-top:20px;flex-shrink:0"></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:12px">' + chips + '</div>' +
+    '</div>';
+  }).filter(Boolean);
+
+  if (!rows.length) return '';
+  return '<div class="card" style="margin-top:18px">' +
+    '<div class="card-head"><div class="card-icon">🏛️</div><div><div class="card-title">Organigramme</div><div class="card-sub">HIÉRARCHIE BCSO</div></div></div>' +
+    '<div style="display:flex;flex-direction:column;gap:0;overflow-x:auto">' + rows.join('') + '</div>' +
+  '</div>';
 }
 
 function statCard(icon, label, val, cls) {
