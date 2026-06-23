@@ -6,9 +6,9 @@
 (function() {
   try {
     var cfg = JSON.parse(localStorage.getItem('bcso_permissions') || '{}');
-    if (cfg.roleAdminIds)  ROLE_ADMIN_IDS  = cfg.roleAdminIds;
-    if (cfg.roleAcademyId) ROLE_ACADEMY_ID = cfg.roleAcademyId;
-    if (cfg.roleAgentId)   ROLE_AGENT_ID   = cfg.roleAgentId;
+    if (cfg.roleAdminIds  && cfg.roleAdminIds.length)  ROLE_ADMIN_IDS  = cfg.roleAdminIds;
+    if (cfg.roleAcademyId && cfg.roleAcademyId.length) ROLE_ACADEMY_ID = cfg.roleAcademyId;
+    if (cfg.roleAgentId   && cfg.roleAgentId.length)   ROLE_AGENT_ID   = cfg.roleAgentId;
   } catch(e) {}
 })();
 
