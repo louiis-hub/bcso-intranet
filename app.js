@@ -115,7 +115,9 @@ async function getDiscordRole(discordUserId) {
 
 async function afterLogin(user, session) {
   S.user = user;
-  var discordUserId = user.user_metadata && (user.user_metadata.sub || user.user_metadata.provider_id);
+  var discordIdentity = user.identities && user.identities.find(function(i){ return i.provider === 'discord'; });
+  var discordUserId = (discordIdentity && (discordIdentity.id || (discordIdentity.identity_data && discordIdentity.identity_data.sub))) || (user.user_metadata && user.user_metadata.provider_id);
+  console.log('[auth] identities:', user.identities, 'discordUserId:', discordUserId);
   var appUser = await DB.getAppUser(user.id);
   var result = await getDiscordRole(discordUserId);
   if (result.role) {
