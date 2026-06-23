@@ -95,17 +95,20 @@ async function doDiscordLogin() {
 var WORKER_URL = 'https://sasp-nord-discord-bot.louisleurin.workers.dev';
 
 async function getDiscordRole(discordUserId) {
+  console.log('[auth] discordUserId:', discordUserId);
   if (!discordUserId) return { role: null, apiOk: false };
   try {
     var res = await fetch(WORKER_URL + '/auth/check-roles?user_id=' + encodeURIComponent(discordUserId));
+    console.log('[auth] check-roles status:', res.status);
     if (!res.ok) return { role: null, apiOk: false };
     var data = await res.json();
+    console.log('[auth] roles from worker:', data.roles);
     var roles = data.roles || [];
     if (ROLE_ADMIN_IDS.some(function(r){ return roles.indexOf(r) !== -1; })) return { role: 'admin', apiOk: true };
     if (roles.indexOf(ROLE_ACADEMY_ID) !== -1) return { role: 'academy', apiOk: true };
     if (roles.indexOf(ROLE_AGENT_ID) !== -1) return { role: 'agent', apiOk: true };
     return { role: null, apiOk: true };
-  } catch(e) { return { role: null, apiOk: false }; }
+  } catch(e) { console.error('[auth] error:', e); return { role: null, apiOk: false }; }
 }
 
 async function afterLogin(user, session) {
