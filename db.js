@@ -118,6 +118,14 @@ var DB = {
   async deleteAgentArme(id) { return getDb().from('agent_armes').delete().eq('id', id); },
   async deleteAgent(id) { return getDb().from('agents').delete().eq('id', id); },
 
+  // ── Wiki sections ────────────────────────────────────────────
+  async getWikiSections() {
+    var { data } = await getDb().from('wiki_sections').select('*').order('ordre');
+    return data || [];
+  },
+  async createWikiSection(data) { return getDb().from('wiki_sections').insert(data).select().single(); },
+  async deleteWikiSection(id) { return getDb().from('wiki_sections').delete().eq('id', id); },
+
   // ── MDT ──────────────────────────────────────────────────────
   async getAllMdtPages() {
     var { data } = await getDb().from('mdt_pages')

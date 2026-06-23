@@ -25,9 +25,10 @@ var _mdtSelCat = null;
 var _mdtSelPage = null;
 var _vehicleCatId = null;
 var _vehiclePages = [];
-var _wikiCats  = {};
-var _wikiPages = {};
-var _wikiSlug  = null;
+var _wikiCats     = {};
+var _wikiPages    = {};
+var _wikiSlug     = null;
+var _wikiSections = [];
 
 var NAV = [
   { id: 'dashboard', icon: '🏛️', label: 'Tableau de bord' },
@@ -40,11 +41,8 @@ var NAV = [
   { group: 'DOCUMENTATION' },
   { id: 'mdt',      icon: '📚', label: 'Guide MDT' },
   { id: 'vehicles', icon: '🚗', label: 'Véhicules' },
-  { id: 'info',     icon: 'ℹ️',  label: 'Informations' },
-  { id: 'manuel',   icon: '📋', label: 'Manuel' },
-  { id: 'tenue',    icon: '👔', label: 'Tenues' },
-  { id: 'document', icon: '📄', label: 'Documents' },
-  { divider: true, staffOnly: true },
+  // wiki sections injected dynamically by loadWikiSections()
+  { divider: true, staffOnly: true, _wikiEnd: true },
   { group: 'ADMINISTRATION', staffOnly: true },
   { id: 'archives',        icon: '🗃️', label: 'Archives',          staffOnly: true },
   { id: 'stats',           icon: '📈', label: 'Statistiques',       staffOnly: true },
@@ -140,8 +138,32 @@ async function afterLogin(user, session) {
   }
   _grades = await DB.getGrades();
   _units  = await DB.getUnits();
+  await loadWikiSections();
   showApp();
   await navigate('dashboard');
+}
+
+var _WIKI_DEFAULTS = [
+  { slug:'info',     titre:'Informations', sous_titre:'Informations générales du BCSO',            icon:'ℹ️',  ordre:0 },
+  { slug:'manuel',   titre:'Manuel',       sous_titre:'Procédures et protocoles opérationnels',     icon:'📋', ordre:1 },
+  { slug:'tenue',    titre:'Tenues',       sous_titre:'Uniformes et équipements règlementaires',    icon:'👔', ordre:2 },
+  { slug:'document', titre:'Documents',    sous_titre:'Documents et formulaires officiels',          icon:'📄', ordre:3 }
+];
+
+async function loadWikiSections() {
+  try { _wikiSections = await DB.getWikiSections(); } catch(e) { _wikiSections = []; }
+  if (!_wikiSections.length) _wikiSections = _WIKI_DEFAULTS.slice();
+  // Rebuild NAV doc entries
+  NAV = NAV.filter(function(n) { return !n._wiki; });
+  var endIdx = -1;
+  for (var i = 0; i < NAV.length; i++) { if (NAV[i]._wikiEnd) { endIdx = i; break; } }
+  if (endIdx !== -1) {
+    var items = _wikiSections.map(function(s) {
+      return { id: s.slug, icon: s.icon || '📄', label: s.titre, _wiki: true };
+    });
+    Array.prototype.splice.apply(NAV, [endIdx, 0].concat(items));
+  }
+  renderNav();
 }
 
 async function doLogout() {
@@ -240,17 +262,23 @@ async function navigate(page, pd) {
       units:          renderUnits,
       mdt:            renderMDT,
       vehicles:       renderVehicles,
-      info:           function(){ return renderWikiSection('info',     {title:'Informations', sub:'Informations générales du BCSO', icon:'ℹ️'}); },
-      manuel:         function(){ return renderWikiSection('manuel',   {title:'Manuel',       sub:'Procédures et protocoles opérationnels', icon:'📋'}); },
-      tenue:          function(){ return renderWikiSection('tenue',    {title:'Tenues',       sub:'Uniformes et équipements règlementaires', icon:'👔'}); },
-      document:       function(){ return renderWikiSection('document', {title:'Documents',    sub:'Documents et formulaires officiels', icon:'📄'}); },
       archives:       renderArchives,
       'global-settings': renderGlobalSettings,
       stats:          renderStats,
       search:         renderSearch,
       settings:       renderSettings
     };
-    if (renderers[page]) await renderers[page]();
+    var fn = renderers[page];
+    if (!fn) {
+      for (var _wi = 0; _wi < _wikiSections.length; _wi++) {
+        if (_wikiSections[_wi].slug === page) {
+          var _ws = _wikiSections[_wi];
+          fn = (function(s){ return function(){ return renderWikiSection(s.slug, {title:s.titre, sub:s.sous_titre||'', icon:s.icon||'📄'}); }; })(_ws);
+          break;
+        }
+      }
+    }
+    if (fn) await fn();
     else setContent('<div class="empty-state"><div class="empty-icon">🚧</div><div class="empty-title">Page en construction</div></div>');
   } catch(err) {
     setContent('<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Erreur : ' + esc(err.message) + '</div></div>');
@@ -1860,6 +1888,21 @@ async function renderGlobalSettings() {
     '</table></div>' +
     '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" onclick="savePermissions()">💾 Sauvegarder les permissions</button></div>';
 
+  // ── Sections Documentation ──
+  var docsHtml =
+    '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">' +
+    _wikiSections.map(function(s) {
+      return '<div style="display:flex;align-items:center;gap:10px;background:var(--bg1);border-radius:var(--rSm);padding:8px 12px">' +
+        '<span style="font-size:1rem">' + (s.icon||'📄') + '</span>' +
+        '<span style="font-size:.85rem;font-weight:600;color:var(--t1);flex:1">' + esc(s.titre) + '</span>' +
+        '<span style="font-size:.75rem;color:var(--t3)">' + esc(s.sous_titre||'') + '</span>' +
+        (s._default ? '' :
+          '<button class="btn btn-ghost btn-sm btn-icon" style="color:var(--red)" onclick="deleteDocSection(\'' + s.id + '\',\'' + esc(s.titre) + '\')">✕</button>') +
+      '</div>';
+    }).join('') +
+    '</div>' +
+    '<button class="btn btn-outline btn-sm" onclick="openDocSectionModal()">+ Nouvelle section</button>';
+
   // ── Zone de danger ──
   var dangerHtml = '<p style="font-size:.83rem;color:var(--t2);margin-bottom:14px">' + archived.length + ' agent(s) dans les archives.</p>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
@@ -1872,10 +1915,65 @@ async function renderGlobalSettings() {
     section('👥', 'Gestion des accès', 'RÔLES DES UTILISATEURS', usersHtml) +
     section('🎖️', 'Grades', 'HIÉRARCHIE', gradesHtml) +
     section('🚔', 'Divisions', 'UNITÉS DU BCSO', unitsHtml) +
+    section('📚', 'Documentation', 'SECTIONS DU MENU', docsHtml) +
     section('🔐', 'Permissions & Rôles Discord', 'CONTRÔLE D\'ACCÈS', permHtml) +
     section('⚠️', 'Zone de danger', 'ACTIONS IRRÉVERSIBLES', dangerHtml)
   );
 }
+function openDocSectionModal() {
+  var icons = ['📄','📋','📁','📑','📊','🗂️','📰','🔖','📝','⚖️','🛡️','🚨','🏆','🗒️'];
+  openModal({
+    eyebrow: 'DOCUMENTATION',
+    title: 'Nouvelle section',
+    size: 'sm',
+    body:
+      fld('Titre *','text','docSecTitre','','Ex : Procédures internes') +
+      fld('Sous-titre','text','docSecSub','','Ex : Règles et protocoles') +
+      '<div class="form-group"><label class="form-label">Icône</label>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+          icons.map(function(ic){ return '<button type="button" onclick="selectDocIcon(\'' + ic + '\')" style="font-size:1.3rem;background:var(--bg1);border:1px solid var(--border0);border-radius:var(--rSm);padding:4px 8px;cursor:pointer" id="dico_' + encodeURIComponent(ic) + '">' + ic + '</button>'; }).join('') +
+        '</div>' +
+        '<input type="hidden" id="docSecIcon" value="📄">' +
+      '</div>',
+    footer: '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-primary" onclick="createDocSection()">Créer</button>'
+  });
+}
+function selectDocIcon(ic) {
+  document.getElementById('docSecIcon').value = ic;
+  document.querySelectorAll('[id^="dico_"]').forEach(function(b){ b.style.borderColor = 'var(--border0)'; b.style.background = 'var(--bg1)'; });
+  var btn = document.getElementById('dico_' + encodeURIComponent(ic));
+  if (btn) { btn.style.borderColor = 'var(--blue)'; btn.style.background = 'var(--bg2)'; }
+}
+async function createDocSection() {
+  var titre = (document.getElementById('docSecTitre').value || '').trim();
+  if (!titre) { toast('Titre requis.','error'); return; }
+  var slug = titre.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  var data = {
+    slug: slug,
+    titre: titre,
+    sous_titre: (document.getElementById('docSecSub').value || '').trim(),
+    icon: document.getElementById('docSecIcon').value || '📄',
+    ordre: _wikiSections.length
+  };
+  try {
+    var r = await DB.createWikiSection(data);
+    if (r.error) throw r.error;
+    closeModal(); toast('Section créée.','success');
+    await loadWikiSections();
+    await renderGlobalSettings();
+  } catch(e) { toast(e.message,'error'); }
+}
+async function deleteDocSection(id, nom) {
+  if (!confirm('Supprimer la section "' + nom + '" et toutes ses pages ?')) return;
+  try {
+    var r = await DB.deleteWikiSection(id);
+    if (r.error) throw r.error;
+    toast('Section supprimée.','info');
+    await loadWikiSections();
+    await renderGlobalSettings();
+  } catch(e) { toast(e.message,'error'); }
+}
+
 function savePermissions() {
   var allPageIds = ['dashboard','agents','grades','units','mdt','vehicles','info','manuel','tenue','document','stats','search','archives'];
   var agentPages   = allPageIds.filter(function(id){ var el = document.getElementById('perm_agent_'   + id); return el && !el.disabled && el.checked; });
