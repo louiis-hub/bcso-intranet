@@ -496,7 +496,7 @@ async function openAgentModal(id) {
         fld('Matricule *', 'text', 'agMatricule', v.matricule, 'Ex: BCSO-001') +
         fld('Date de naissance', 'date', 'agDob', v.date_naissance) +
       '</div>' +
-      '<div class="form-group"><label class="form-label">Téléphone</label><input class="form-control" type="text" id="agTel" value="' + esc(v.telephone||'') + '" placeholder="(555) 0000" oninput="formatTel(this)" maxlength="11"></div>' +
+      '<div class="form-group"><label class="form-label">Téléphone</label><input class="form-control" type="text" id="agTel" value="' + esc(fmtTel(v.telephone)||'') + '" placeholder="(555) 0000" oninput="formatTel(this)" maxlength="11"></div>' +
       '<div class="form-grid2">' +
         '<div class="form-group"><label class="form-label">Grade *</label><select class="form-control" id="agGrade">' + gradeOpts + '</select></div>' +
         '<div class="form-group"><label class="form-label">Statut</label><select class="form-control" id="agStatut">' +
@@ -530,6 +530,12 @@ function formatTel(input) {
   var d = input.value.replace(/\D/g, '').slice(0, 7);
   if (d.length <= 3) input.value = d.length ? '(' + d : '';
   else input.value = '(' + d.slice(0, 3) + ') ' + d.slice(3);
+}
+function fmtTel(v) {
+  if (!v) return null;
+  var d = String(v).replace(/\D/g, '').slice(0, 7);
+  if (!d) return v;
+  return d.length <= 3 ? '(' + d : '(' + d.slice(0, 3) + ') ' + d.slice(3);
 }
 
 function fld(label, type, id, val, placeholder) {
@@ -633,7 +639,7 @@ async function renderAgentProfile() {
         '<div class="card">' +
           '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Informations' + (ag.is_formateur ? ' <span class="badge badge-blue" style="font-size:.65rem;margin-left:6px">🎓 Formateur</span>' : '') + '</div></div></div>' +
           infoRow('Date de naissance', fmt(ag.date_naissance)) +
-          infoRow('Téléphone', ag.telephone) +
+          infoRow('Téléphone', fmtTel(ag.telephone)) +
           infoRow('Date de recrutement', fmt(ag.date_recrutement)) +
           infoRow('Dernière promotion', fmt(ag.date_promotion)) +
           (formateur ? infoRow('Formateur', '<span onclick="navigate(\'agent-profile\',{id:\'' + formateur.id + '\'})" style="color:var(--blue);cursor:pointer">🎓 ' + esc(formateur.prenom + ' ' + formateur.nom) + ' (' + esc(formateur.matricule) + ')</span>') : '') +
