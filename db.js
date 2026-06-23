@@ -13,7 +13,8 @@ var DB = {
       provider: 'discord',
       options: {
         scopes: 'identify guilds.members.read',
-        redirectTo: 'https://louiis-hub.github.io/bcso-intranet/'
+        redirectTo: 'https://louiis-hub.github.io/bcso-intranet/',
+        queryParams: { prompt: 'consent' }
       }
     });
   },
