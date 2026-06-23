@@ -496,7 +496,7 @@ async function openAgentModal(id) {
         fld('Matricule *', 'text', 'agMatricule', v.matricule, 'Ex: BCSO-001') +
         fld('Date de naissance', 'date', 'agDob', v.date_naissance) +
       '</div>' +
-      fld('Téléphone', 'text', 'agTel', v.telephone, '+1 555 000 0000') +
+      '<div class="form-group"><label class="form-label">Téléphone</label><input class="form-control" type="text" id="agTel" value="' + esc(v.telephone||'') + '" placeholder="(555) 0000" oninput="formatTel(this)" maxlength="11"></div>' +
       '<div class="form-grid2">' +
         '<div class="form-group"><label class="form-label">Grade *</label><select class="form-control" id="agGrade">' + gradeOpts + '</select></div>' +
         '<div class="form-group"><label class="form-label">Statut</label><select class="form-control" id="agStatut">' +
@@ -524,6 +524,12 @@ async function openAgentModal(id) {
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
       '<button class="btn btn-primary" onclick="saveAgent(\'' + (id||'') + '\')">Enregistrer</button>'
   });
+}
+
+function formatTel(input) {
+  var d = input.value.replace(/\D/g, '').slice(0, 7);
+  if (d.length <= 3) input.value = d.length ? '(' + d : '';
+  else input.value = '(' + d.slice(0, 3) + ') ' + d.slice(3);
 }
 
 function fld(label, type, id, val, placeholder) {
