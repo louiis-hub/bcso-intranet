@@ -182,7 +182,7 @@ function buildNav() {
   var discordName = S.user && S.user.user_metadata && (S.user.user_metadata.full_name || S.user.user_metadata.name || S.user.user_metadata.user_name);
   var n = discordName || (S.appUser ? (S.appUser.prenom + ' ' + S.appUser.nom).trim() : S.user.email);
   var initials = n.split(' ').map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2);
-  var roleLabel = { admin:'ADMIN', academy:'ACADÉMIE', agent:'AGENT' }[S.role] || S.role.toUpperCase();
+  var roleLabel = { admin:'ADMIN', academy:'SCA', agent:'AGENT' }[S.role] || S.role.toUpperCase();
   document.getElementById('sidebarFooter').innerHTML =
     '<div class="sidebar-user">' +
       '<div class="sidebar-avatar">' + initials + '</div>' +
@@ -1784,7 +1784,7 @@ async function renderGlobalSettings() {
       return '<tr><td>' + esc(u.nom) + '</td><td>' + esc(u.prenom) + '</td>' +
         '<td>' + roleBadge(u.app_role) + '</td>' +
         '<td><select class="form-control" style="width:auto" onchange="changeRole(\'' + u.id + '\',this.value)">' +
-          ['admin','academy','agent'].map(function(r){ return '<option value="' + r + '"' + (u.app_role===r?' selected':'') + '>' + r + '</option>'; }).join('') +
+          [['admin','Command Staff'],['academy','Sheriff County Academy'],['agent','Agent']].map(function(p){ return '<option value="' + p[0] + '"' + (u.app_role===p[0]?' selected':'') + '>' + p[1] + '</option>'; }).join('') +
         '</select></td></tr>';
     }).join('') + '</tbody></table></div>';
 
@@ -1837,7 +1837,7 @@ async function renderGlobalSettings() {
     '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px 16px;align-items:center;margin-bottom:20px">' +
       '<label style="font-size:.82rem;font-weight:600;color:var(--gold)">🔴 Command Staff</label>' +
       '<input class="form-control" id="cfgAdminId" value="' + esc((cfg.roleAdminIds || ROLE_ADMIN_IDS).join(', ')) + '" placeholder="ID1, ID2">' +
-      '<label style="font-size:.82rem;font-weight:600;color:var(--blue)">🔵 Police Academy</label>' +
+      '<label style="font-size:.82rem;font-weight:600;color:var(--blue)">🔵 Sheriff County Academy</label>' +
       '<input class="form-control" id="cfgAcademyId" value="' + esc(cfg.roleAcademyId || ROLE_ACADEMY_ID) + '">' +
       '<label style="font-size:.82rem;font-weight:600;color:var(--t2)">⚪ Agent</label>' +
       '<input class="form-control" id="cfgAgentId" value="' + esc(cfg.roleAgentId || ROLE_AGENT_ID) + '">' +
@@ -1939,7 +1939,7 @@ async function renderSettings() {
         return '<tr><td>' + esc(u.nom) + '</td><td>' + esc(u.prenom) + '</td>' +
           '<td>' + roleBadge(u.app_role) + '</td>' +
           '<td><select class="form-control" style="width:auto" onchange="changeRole(\'' + u.id + '\',this.value)">' +
-            ['admin','academy','agent'].map(function(r){ return '<option value="' + r + '"' + (u.app_role===r?' selected':'') + '>' + r + '</option>'; }).join('') +
+            [['admin','Command Staff'],['academy','Sheriff County Academy'],['agent','Agent']].map(function(p){ return '<option value="' + p[0] + '"' + (u.app_role===p[0]?' selected':'') + '>' + p[1] + '</option>'; }).join('') +
           '</select></td>' +
         '</tr>';
       }).join('') +
@@ -1967,7 +1967,8 @@ async function renderSettings() {
 
 function roleBadge(r) {
   var map = { admin:'badge-gold', academy:'badge-blue', agent:'badge-gray' };
-  return '<span class="badge ' + (map[r]||'badge-gray') + '">' + esc(r) + '</span>';
+  var labels = { admin:'Command Staff', academy:'Sheriff County Academy', agent:'Agent' };
+  return '<span class="badge ' + (map[r]||'badge-gray') + '">' + esc(labels[r]||r) + '</span>';
 }
 
 async function changeRole(userId, role) {
