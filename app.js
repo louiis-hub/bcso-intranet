@@ -656,8 +656,6 @@ async function renderAgentProfile() {
           '<div class="ppa-grid">' + ppaHtml + '</div>' +
           (function(){
             var b = [ag.blame1,ag.blame2,ag.blame3];
-            var count = b.filter(Boolean).length;
-            if (!count) return '';
             return '<div style="margin-top:14px;border-top:1px solid var(--border0);padding-top:12px">' +
               '<div style="font-size:.72rem;color:var(--red);font-weight:700;letter-spacing:.8px;margin-bottom:8px">⚠️ BLÂMES</div>' +
               '<div style="display:flex;gap:8px">' +
