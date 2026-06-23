@@ -58,6 +58,11 @@ var DB = {
     var { data } = await q;
     return data || [];
   },
+  async getFormateurs() {
+    var { data } = await getDb().from('agents').select('id,prenom,nom,matricule,grade')
+      .eq('is_formateur', true).neq('statut', 'Archivé').order('matricule');
+    return data || [];
+  },
   async checkMatricule(matricule, excludeId) {
     var q = getDb().from('agents').select('id').eq('matricule', matricule);
     if (excludeId) q = q.neq('id', excludeId);

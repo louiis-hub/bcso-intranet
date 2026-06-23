@@ -465,6 +465,7 @@ async function openAgentModal(id) {
   if (!canWrite()) return;
   if (!_grades.length) _grades = await DB.getGrades();
   var ag = id ? await DB.getAgent(id) : null;
+  var formateurs = await DB.getFormateurs();
   var v = ag || {};
 
   var gradeOpts = _grades.map(function(g){
@@ -475,6 +476,12 @@ async function openAgentModal(id) {
     var chk = (v.unites||[]).includes(u.code) ? ' checked' : '';
     return '<label class="form-check"><input type="checkbox" name="unite" value="' + esc(u.code) + '"' + chk + '><span class="form-check-lbl">' + esc(u.code) + ' — ' + esc(u.nom) + '</span></label>';
   }).join('');
+
+  var formateurOpts = '<option value="">— Aucun formateur assigné —</option>' +
+    formateurs.filter(function(f){ return f.id !== id; }).map(function(f){
+      return '<option value="' + f.id + '"' + (v.formateur_id === f.id ? ' selected' : '') + '>' +
+        esc(f.matricule + ' — ' + f.prenom + ' ' + f.nom) + '</option>';
+    }).join('');
 
   openModal({
     eyebrow: id ? 'MODIFIER UN AGENT' : 'NOUVEL AGENT',
@@ -502,6 +509,15 @@ async function openAgentModal(id) {
       '</div>' +
       '<div class="form-group"><label class="form-label">Unités</label>' +
         '<div class="flex flex-wrap gap-12">' + uniteChecks + '</div>' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">Formateur assigné</label>' +
+        '<select class="form-control" id="agFormateur">' + formateurOpts + '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-check" style="align-items:flex-start">' +
+          '<input type="checkbox" id="agIsFormateur"' + (v.is_formateur ? ' checked' : '') + ' style="margin-top:3px">' +
+          '<span class="form-check-lbl">🎓 Agent formateur — apparaît dans la liste des formateurs assignables</span>' +
+        '</label>' +
       '</div>' +
       '<div class="form-group"><label class="form-label">Notes</label><textarea class="form-control" id="agNotes" rows="2">' + esc(v.notes||'') + '</textarea></div>',
     footer:
@@ -533,7 +549,9 @@ async function saveAgent(id) {
     date_recrutement: document.getElementById('agRecruit').value || null,
     date_promotion: document.getElementById('agPromo').value || null,
     unites: unites,
-    notes: document.getElementById('agNotes').value.trim() || null
+    notes: document.getElementById('agNotes').value.trim() || null,
+    is_formateur: document.getElementById('agIsFormateur').checked,
+    formateur_id: document.getElementById('agFormateur').value || null
   };
 
   try {
@@ -558,6 +576,7 @@ async function renderAgentProfile() {
     DB.getAgent(id),
     DB.getAgentArmes(id)
   ]);
+  var formateur = ag && ag.formateur_id ? await DB.getAgent(ag.formateur_id) : null;
   if (!ag) { navigate('agents'); return; }
 
   var unites = (ag.unites||[]).map(unitBadge).join(' ');
@@ -606,11 +625,12 @@ async function renderAgentProfile() {
       '<div style="display:contents">' +
 
         '<div class="card">' +
-          '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Informations</div></div></div>' +
+          '<div class="card-head"><div class="card-icon">👤</div><div><div class="card-title">Informations' + (ag.is_formateur ? ' <span class="badge badge-blue" style="font-size:.65rem;margin-left:6px">🎓 Formateur</span>' : '') + '</div></div></div>' +
           infoRow('Date de naissance', fmt(ag.date_naissance)) +
           infoRow('Téléphone', ag.telephone) +
           infoRow('Date de recrutement', fmt(ag.date_recrutement)) +
           infoRow('Dernière promotion', fmt(ag.date_promotion)) +
+          (formateur ? infoRow('Formateur', '<span onclick="navigate(\'agent-profile\',{id:\'' + formateur.id + '\'})" style="color:var(--blue);cursor:pointer">🎓 ' + esc(formateur.prenom + ' ' + formateur.nom) + ' (' + esc(formateur.matricule) + ')</span>') : '') +
           (ag.notes ? '<div class="divider"></div><div style="font-size:.83rem;color:var(--t2)">' + esc(ag.notes) + '</div>' : '') +
         '</div>' +
 
