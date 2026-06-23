@@ -1212,6 +1212,36 @@ async function renderMDT() {
   renderMdtList();
 }
 
+function movePageBtns(id, idx, total, ctx) {
+  if (!canWrite()) return '';
+  return '<div style="display:flex;gap:1px;margin-left:auto;opacity:.5" onclick="event.stopPropagation()">' +
+    (idx > 0 ? '<button class="btn-move" onclick="movePage(\'' + id + '\',\'up\',\'' + ctx + '\')">▲</button>' : '<span style="width:16px"></span>') +
+    (idx < total-1 ? '<button class="btn-move" onclick="movePage(\'' + id + '\',\'down\',\'' + ctx + '\')">▼</button>' : '<span style="width:16px"></span>') +
+  '</div>';
+}
+async function movePage(pageId, dir, ctx) {
+  var pages, reload;
+  if (ctx === 'mdt') {
+    pages = _mdtPages;
+    reload = async function(){ _mdtPages = await DB.getAllMdtPages(); renderMdtList(); };
+  } else if (ctx === 'vehicle') {
+    pages = _vehiclePages;
+    reload = async function(){ _vehiclePages = await DB.getAllVehiclePages(_vehicleCatId); renderVehicleList(); };
+  } else {
+    pages = _wikiPages[_wikiSlug] || [];
+    reload = (function(slug){ return async function(){ _wikiPages[slug] = await DB.getAllVehiclePages(_wikiCats[slug]); renderWikiList(slug); }; })(_wikiSlug);
+  }
+  var idx = -1;
+  for (var i = 0; i < pages.length; i++) { if (pages[i].id === pageId) { idx = i; break; } }
+  if (idx === -1) return;
+  var swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= pages.length) return;
+  await Promise.all([
+    DB.updateMdtPage(pages[idx].id, { ordre: swapIdx }),
+    DB.updateMdtPage(pages[swapIdx].id, { ordre: idx })
+  ]);
+  await reload();
+}
 function renderMdtList() {
   var el = document.getElementById('mdtList');
   if (!el) return;
@@ -1220,9 +1250,9 @@ function renderMdtList() {
       (canWrite() ? '<br>Cliquez sur "+ Nouvelle page".' : '') + '</p>';
     return;
   }
-  el.innerHTML = _mdtPages.map(function(p) {
-    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openMdtPage(\'' + p.id + '\')">' +
-      '📄 ' + esc(p.titre) + '</div>';
+  el.innerHTML = _mdtPages.map(function(p, i) {
+    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openMdtPage(\'' + p.id + '\')" style="justify-content:space-between">' +
+      '<span>📄 ' + esc(p.titre) + '</span>' + movePageBtns(p.id, i, _mdtPages.length, 'mdt') + '</div>';
   }).join('');
 }
 
@@ -1384,9 +1414,9 @@ function renderVehicleList() {
       (canWrite() ? '<br>Cliquez sur "+ Nouvelle page".' : '') + '</p>';
     return;
   }
-  el.innerHTML = _vehiclePages.map(function(p) {
-    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openVehiclePage(\'' + p.id + '\')">' +
-      '🚗 ' + esc(p.titre) + '</div>';
+  el.innerHTML = _vehiclePages.map(function(p, i) {
+    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openVehiclePage(\'' + p.id + '\')" style="justify-content:space-between">' +
+      '<span>🚗 ' + esc(p.titre) + '</span>' + movePageBtns(p.id, i, _vehiclePages.length, 'vehicle') + '</div>';
   }).join('');
 }
 
@@ -1597,8 +1627,9 @@ function renderWikiList(slug, icon) {
     el.innerHTML = '<p style="color:var(--t3);font-size:.8rem;text-align:center;padding:20px 8px">Aucune page.' + (canWrite() ? '<br>Cliquez sur "+ Nouvelle page".' : '') + '</p>';
     return;
   }
-  el.innerHTML = pages.map(function(p){
-    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openWikiPage(\'' + p.id + '\')">' + (icon||'📄') + ' ' + esc(p.titre) + '</div>';
+  el.innerHTML = pages.map(function(p, i){
+    return '<div class="mdt-page-item' + (_mdtSelPage===p.id?' active':'') + '" onclick="openWikiPage(\'' + p.id + '\')" style="justify-content:space-between">' +
+      '<span>' + (icon||'📄') + ' ' + esc(p.titre) + '</span>' + movePageBtns(p.id, i, pages.length, 'wiki') + '</div>';
   }).join('');
 }
 async function openWikiPage(pageId) {

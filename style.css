@@ -221,6 +221,8 @@ select.form-control{cursor:pointer}
 .mdt-cat:hover{background:var(--goldGlow);color:var(--t0)}
 .mdt-cat.open{color:var(--gold)}
 .mdt-page-item{display:flex;align-items:center;gap:5px;padding:4px 8px 4px 24px;border-radius:var(--rSm);cursor:pointer;font-size:.8rem;color:var(--t3);transition:all var(--dur) var(--ease)}
+.btn-move{background:none;border:none;color:var(--t3);cursor:pointer;font-size:.6rem;padding:0 2px;line-height:1;border-radius:2px}
+.btn-move:hover{color:var(--gold);background:rgba(255,255,255,.06)}
 .mdt-page-item:hover{color:var(--t1);background:rgba(255,255,255,.03)}
 .mdt-page-item.active{color:var(--gold)}
 /* Quill overrides */
