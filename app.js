@@ -599,6 +599,7 @@ async function openAgentModal(id) {
           '<span class="form-check-lbl">🎓 Agent formateur — apparaît dans la liste des formateurs assignables</span>' +
         '</label>' +
       '</div>' +
+      fld('Discord ID', 'text', 'agDiscordId', v.discord_id||'', 'Ex: 123456789012345678') +
       '<div class="form-group"><label class="form-label">Notes</label><textarea class="form-control" id="agNotes" rows="2">' + esc(v.notes||'') + '</textarea></div>',
     footer:
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
@@ -643,7 +644,8 @@ async function saveAgent(id) {
     unites: unites,
     notes: document.getElementById('agNotes').value.trim() || null,
     is_formateur: document.getElementById('agIsFormateur').checked,
-    formateur_id: document.getElementById('agFormateur').value || null
+    formateur_id: document.getElementById('agFormateur').value || null,
+    discord_id: document.getElementById('agDiscordId').value.trim() || null
   };
 
   try {
