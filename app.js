@@ -92,16 +92,15 @@ async function doDiscordLogin() {
   }
 }
 
-async function getDiscordRole(token) {
-  if (!token) return { role: null, apiOk: false };
+var WORKER_URL = 'https://sasp-nord-discord-bot.louisleurin.workers.dev';
+
+async function getDiscordRole(discordUserId) {
+  if (!discordUserId) return { role: null, apiOk: false };
   try {
-    var res = await fetch('https://discord.com/api/users/@me/guilds/' + GUILD_ID + '/member', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
+    var res = await fetch(WORKER_URL + '/auth/check-roles?user_id=' + encodeURIComponent(discordUserId));
     if (!res.ok) return { role: null, apiOk: false };
-    var member = await res.json();
-    S.serverNick = member.nick || null;
-    var roles = member.roles || [];
+    var data = await res.json();
+    var roles = data.roles || [];
     if (ROLE_ADMIN_IDS.some(function(r){ return roles.indexOf(r) !== -1; })) return { role: 'admin', apiOk: true };
     if (roles.indexOf(ROLE_ACADEMY_ID) !== -1) return { role: 'academy', apiOk: true };
     if (roles.indexOf(ROLE_AGENT_ID) !== -1) return { role: 'agent', apiOk: true };
@@ -111,34 +110,25 @@ async function getDiscordRole(token) {
 
 async function afterLogin(user, session) {
   S.user = user;
-  if (!session) {
-    var { data } = await DB.getSession();
-    session = data.session;
-  }
-  var providerToken = session && session.provider_token;
+  var discordUserId = user.user_metadata && (user.user_metadata.sub || user.user_metadata.provider_id);
   var appUser = await DB.getAppUser(user.id);
-  if (providerToken) {
-    var result = await getDiscordRole(providerToken);
-    if (result.role) {
-      S.role = result.role;
-      await DB.upsertAppUser({
-        user_id: user.id,
-        nom: (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.global_name || user.user_metadata.name)) || '',
-        prenom: '',
-        app_role: S.role
-      });
-    } else if (!result.apiOk && appUser && appUser.app_role) {
-      S.role = appUser.app_role;
-    } else {
-      await DB.logout();
-      showLogin();
-      var errEl = document.getElementById('loginErr');
-      if (errEl) { errEl.textContent = '⚠ Accès refusé — vous n\'avez pas les rôles requis sur le serveur Discord.'; errEl.classList.add('show'); }
-      return;
-    }
+  var result = await getDiscordRole(discordUserId);
+  if (result.role) {
+    S.role = result.role;
+    await DB.upsertAppUser({
+      user_id: user.id,
+      nom: (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.global_name || user.user_metadata.name)) || '',
+      prenom: '',
+      app_role: S.role
+    });
+  } else if (!result.apiOk && appUser && appUser.app_role) {
+    S.role = appUser.app_role;
   } else {
-    S.role = (appUser && appUser.app_role) || null;
-    if (!S.role) { await DB.logout(); showLogin(); return; }
+    await DB.logout();
+    showLogin();
+    var errEl = document.getElementById('loginErr');
+    if (errEl) { errEl.textContent = '⚠ Accès refusé — vous n\'avez pas les rôles requis sur le serveur Discord.'; errEl.classList.add('show'); }
+    return;
   }
   _grades = await DB.getGrades();
   _units  = await DB.getUnits();
