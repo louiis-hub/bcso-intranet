@@ -103,7 +103,9 @@ async function getDiscordRole(discordUserId) {
     if (!res.ok) return { role: null, apiOk: false };
     var data = await res.json();
     console.log('[auth] roles from worker:', data.roles);
+    console.log('[auth] is_owner:', data.is_owner, 'debug:', data.debug);
     var roles = data.roles || [];
+    if (data.is_owner) return { role: 'admin', apiOk: true };
     if (ROLE_ADMIN_IDS.some(function(r){ return roles.indexOf(r) !== -1; })) return { role: 'admin', apiOk: true };
     if (roles.indexOf(ROLE_ACADEMY_ID) !== -1) return { role: 'academy', apiOk: true };
     if (roles.indexOf(ROLE_AGENT_ID) !== -1) return { role: 'agent', apiOk: true };
