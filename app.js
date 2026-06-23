@@ -163,7 +163,7 @@ async function loadWikiSections() {
     });
     Array.prototype.splice.apply(NAV, [endIdx, 0].concat(items));
   }
-  renderNav();
+  if (document.getElementById('sidebarNav')) buildNav();
 }
 
 async function doLogout() {
