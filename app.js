@@ -654,6 +654,23 @@ async function renderAgentProfile() {
             (isAdmin() && ag.statut !== 'Archivé' ? '<button class="btn btn-ghost btn-sm" onclick="openPPAModal(\'' + id + '\')">✏️ PPA / Qualif.</button>' : '') +
           '</div>' +
           '<div class="ppa-grid">' + ppaHtml + '</div>' +
+          (function(){
+            var b = [ag.blame1,ag.blame2,ag.blame3];
+            var count = b.filter(Boolean).length;
+            if (!count) return '';
+            return '<div style="margin-top:14px;border-top:1px solid var(--border0);padding-top:12px">' +
+              '<div style="font-size:.72rem;color:var(--red);font-weight:700;letter-spacing:.8px;margin-bottom:8px">⚠️ BLÂMES</div>' +
+              '<div style="display:flex;gap:8px">' +
+                [1,2,3].map(function(n){
+                  var active = b[n-1];
+                  return '<span style="padding:4px 14px;border-radius:20px;font-size:.78rem;font-weight:600;border:1px solid;' +
+                    (active ? 'background:rgba(231,76,60,.18);color:var(--red);border-color:rgba(231,76,60,.5)' :
+                              'background:var(--bg2);color:var(--t3);border-color:var(--border0)') +
+                    '">Blâme ' + n + '</span>';
+                }).join('') +
+              '</div>' +
+            '</div>';
+          })()+
         '</div>' +
 
         '<div class="card">' +
@@ -766,7 +783,13 @@ async function openPPAModal(agentId) {
           ppaCheckDate('ppaCk3','PPA 3',ag.ppa3,ag.ppa3_date,'ppaDate3') +
         '</div>' +
       '</div>' +
-      '',
+      '<div class="form-group"><label class="form-label" style="color:var(--red)">⚠️ Blâmes</label>' +
+        '<div style="display:flex;flex-direction:column;gap:10px">' +
+          ppaCheck('blameCk1','Blâme 1',ag.blame1) +
+          ppaCheck('blameCk2','Blâme 2',ag.blame2) +
+          ppaCheck('blameCk3','Blâme 3',ag.blame3) +
+        '</div>' +
+      '</div>',
     footer:
       '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
       '<button class="btn btn-primary" onclick="savePPAModal(\'' + agentId + '\')">Enregistrer</button>'
@@ -796,7 +819,10 @@ async function savePPAModal(agentId) {
     ppa1_date: document.getElementById('ppaCk1').checked ? (document.getElementById('ppaDate1').value || null) : null,
     ppa2_date: document.getElementById('ppaCk2').checked ? (document.getElementById('ppaDate2').value || null) : null,
     ppa3_date: document.getElementById('ppaCk3').checked ? (document.getElementById('ppaDate3').value || null) : null,
-    qual_pa: document.getElementById('qkPA').checked
+    qual_pa: document.getElementById('qkPA').checked,
+    blame1: document.getElementById('blameCk1').checked,
+    blame2: document.getElementById('blameCk2').checked,
+    blame3: document.getElementById('blameCk3').checked
   };
   try {
     var r = await DB.updateAgent(agentId, data);
