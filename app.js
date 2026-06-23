@@ -2,6 +2,16 @@
 //  BCSO INTRANET — app.js
 // ══════════════════════════════════════════════════════════════════
 
+// ── Config locale (overrides depuis localStorage) ───────────────────
+(function() {
+  try {
+    var cfg = JSON.parse(localStorage.getItem('bcso_permissions') || '{}');
+    if (cfg.roleAdminIds)  ROLE_ADMIN_IDS  = cfg.roleAdminIds;
+    if (cfg.roleAcademyId) ROLE_ACADEMY_ID = cfg.roleAcademyId;
+    if (cfg.roleAgentId)   ROLE_AGENT_ID   = cfg.roleAgentId;
+  } catch(e) {}
+})();
+
 // ── State ──────────────────────────────────────────────────────────
 var S = { user: null, appUser: null, role: 'agent', page: 'dashboard', pd: {} };
 var _quill = null;
@@ -210,9 +220,15 @@ async function navigate(page, pd) {
   _charts = {};
   _quill = null;
   setContent('<div class="loader-block"><div class="spinner"></div><p>Chargement…</p></div>');
-  var AGENT_ALLOWED = ['dashboard','agents','agent-profile','grades','units','mdt','vehicles','info','manuel','tenue','document'];
+  var _permCfg = {}; try { _permCfg = JSON.parse(localStorage.getItem('bcso_permissions') || '{}'); } catch(e) {}
+  var AGENT_ALLOWED   = _permCfg.agentPages   || ['dashboard','agents','agent-profile','grades','units','mdt','vehicles','info','manuel','tenue','document'];
+  var ACADEMY_ALLOWED = _permCfg.academyPages  || null;
   if (S.role === 'agent' && AGENT_ALLOWED.indexOf(page) === -1) {
     setContent('<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Accès restreint</div><div class="empty-sub">Cette section est réservée au personnel d\'encadrement.</div></div>');
+    return;
+  }
+  if (S.role === 'academy' && ACADEMY_ALLOWED && ACADEMY_ALLOWED.indexOf(page) === -1) {
+    setContent('<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Accès restreint</div><div class="empty-sub">Cette section est réservée aux administrateurs.</div></div>');
     return;
   }
   try {
@@ -1794,12 +1810,55 @@ async function renderGlobalSettings() {
     }).join('') + '</div>' +
     '<button class="btn btn-outline btn-sm" onclick="navigate(\'units\')">✏️ Gérer les divisions</button>';
 
-  // ── Rôles Discord ──
-  var rolesHtml = '<div style="font-size:.82rem;color:var(--t2);line-height:2">' +
-    '<div>🔴 <strong>Admin complet</strong> : <span class="mono" style="color:var(--t3)">1518289587531939881</span> / <span class="mono" style="color:var(--t3)">1518289618783572032</span></div>' +
-    '<div>🔵 <strong>Académie</strong> : <span class="mono" style="color:var(--t3)">1517973389778620487</span></div>' +
-    '<div>⚪ <strong>Agent</strong> : tous les autres membres authentifiés</div>' +
-  '</div>';
+  // ── Permissions ──
+  var cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem('bcso_permissions') || '{}'); } catch(e) {}
+
+  var allPages = [
+    { id:'dashboard',     label:'Tableau de bord' },
+    { id:'agents',        label:'Agents' },
+    { id:'grades',        label:'Grades' },
+    { id:'units',         label:'Divisions' },
+    { id:'mdt',           label:'Guide MDT' },
+    { id:'vehicles',      label:'Véhicules' },
+    { id:'info',          label:'Informations' },
+    { id:'manuel',        label:'Manuel' },
+    { id:'tenue',         label:'Tenues' },
+    { id:'document',      label:'Documents' },
+    { id:'stats',         label:'Statistiques', staffDefault:true },
+    { id:'search',        label:'Recherche',    staffDefault:true },
+    { id:'archives',      label:'Archives',     staffDefault:true }
+  ];
+  var agentPages   = cfg.agentPages   || ['dashboard','agents','agent-profile','grades','units','mdt','vehicles','info','manuel','tenue','document'];
+  var academyPages = cfg.academyPages  || allPages.map(function(p){ return p.id; });
+
+  var permHtml =
+    '<div style="font-size:.82rem;margin-bottom:16px;color:var(--t2)">IDs des rôles Discord utilisés pour l\'authentification.</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px 16px;align-items:center;margin-bottom:20px">' +
+      '<label style="font-size:.82rem;font-weight:600;color:var(--gold)">🔴 Command Staff</label>' +
+      '<input class="form-control" id="cfgAdminId" value="' + esc((cfg.roleAdminIds || ROLE_ADMIN_IDS).join(', ')) + '" placeholder="ID1, ID2">' +
+      '<label style="font-size:.82rem;font-weight:600;color:var(--blue)">🔵 Police Academy</label>' +
+      '<input class="form-control" id="cfgAcademyId" value="' + esc(cfg.roleAcademyId || ROLE_ACADEMY_ID) + '">' +
+      '<label style="font-size:.82rem;font-weight:600;color:var(--t2)">⚪ Agent</label>' +
+      '<input class="form-control" id="cfgAgentId" value="' + esc(cfg.roleAgentId || ROLE_AGENT_ID) + '">' +
+    '</div>' +
+    '<div style="font-size:.82rem;font-weight:600;color:var(--t1);margin-bottom:10px">Accès aux pages par rôle</div>' +
+    '<div class="table-wrap"><table>' +
+      '<thead><tr><th>PAGE</th><th style="text-align:center">Agent</th><th style="text-align:center">Académie</th><th style="text-align:center">Admin</th></tr></thead>' +
+      '<tbody>' +
+        allPages.map(function(p) {
+          var agChk  = agentPages.indexOf(p.id) !== -1;
+          var acChk  = academyPages.indexOf(p.id) !== -1;
+          return '<tr>' +
+            '<td style="font-size:.82rem">' + p.label + '</td>' +
+            '<td style="text-align:center"><input type="checkbox" id="perm_agent_' + p.id + '"' + (agChk?' checked':'') + (p.staffDefault?' disabled':'') + '></td>' +
+            '<td style="text-align:center"><input type="checkbox" id="perm_academy_' + p.id + '"' + (acChk?' checked':'') + (p.staffDefault?' disabled':'') + '></td>' +
+            '<td style="text-align:center"><input type="checkbox" checked disabled></td>' +
+          '</tr>';
+        }).join('') +
+      '</tbody>' +
+    '</table></div>' +
+    '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" onclick="savePermissions()">💾 Sauvegarder les permissions</button></div>';
 
   // ── Zone de danger ──
   var dangerHtml = '<p style="font-size:.83rem;color:var(--t2);margin-bottom:14px">' + archived.length + ' agent(s) dans les archives.</p>' +
@@ -1813,10 +1872,29 @@ async function renderGlobalSettings() {
     section('👥', 'Gestion des accès', 'RÔLES DES UTILISATEURS', usersHtml) +
     section('🎖️', 'Grades', 'HIÉRARCHIE', gradesHtml) +
     section('🚔', 'Divisions', 'UNITÉS DU BCSO', unitsHtml) +
-    section('🤖', 'Rôles Discord', 'IDS CONFIGURÉS POUR L\'ACCÈS', rolesHtml) +
+    section('🔐', 'Permissions & Rôles Discord', 'CONTRÔLE D\'ACCÈS', permHtml) +
     section('⚠️', 'Zone de danger', 'ACTIONS IRRÉVERSIBLES', dangerHtml)
   );
 }
+function savePermissions() {
+  var allPageIds = ['dashboard','agents','grades','units','mdt','vehicles','info','manuel','tenue','document','stats','search','archives'];
+  var agentPages   = allPageIds.filter(function(id){ var el = document.getElementById('perm_agent_'   + id); return el && !el.disabled && el.checked; });
+  var academyPages = allPageIds.filter(function(id){ var el = document.getElementById('perm_academy_' + id); return el && !el.disabled && el.checked; });
+  var adminRaw = document.getElementById('cfgAdminId').value;
+  var cfg = {
+    roleAdminIds:  adminRaw.split(',').map(function(s){ return s.trim(); }).filter(Boolean),
+    roleAcademyId: document.getElementById('cfgAcademyId').value.trim(),
+    roleAgentId:   document.getElementById('cfgAgentId').value.trim(),
+    agentPages:    agentPages.concat(['agent-profile']),
+    academyPages:  academyPages.concat(['agent-profile'])
+  };
+  localStorage.setItem('bcso_permissions', JSON.stringify(cfg));
+  ROLE_ADMIN_IDS  = cfg.roleAdminIds;
+  ROLE_ACADEMY_ID = cfg.roleAcademyId;
+  ROLE_AGENT_ID   = cfg.roleAgentId;
+  toast('Permissions sauvegardées — rechargez pour appliquer les rôles.', 'success');
+}
+
 async function deleteGradeGS(id, nom) {
   if (!confirm('Supprimer le grade "' + nom + '" ?\nAttention : les agents ayant ce grade devront être mis à jour manuellement.')) return;
   var r = await DB.deleteGrade(id);
