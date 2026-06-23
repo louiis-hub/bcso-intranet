@@ -295,7 +295,7 @@ function fmtShort(dateStr) {
   return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' });
 }
 function statusBadge(s) {
-  var map = { 'Actif':'badge-green','Suspendu':'badge-orange','Retraité':'badge-gray','Archivé':'badge-red' };
+  var map = { 'En service':'badge-green','Suspendu':'badge-orange','Licencié':'badge-red','Retraité':'badge-gray','Démission':'badge-gray','Archivé':'badge-red' };
   return '<span class="badge ' + (map[s]||'badge-gray') + '">' + esc(s) + '</span>';
 }
 function gradeBadge(g) {
@@ -324,7 +324,7 @@ async function renderDashboard() {
   } catch(e) { hist = []; }
 
   var total   = agents.length;
-  var actifs  = agents.filter(function(a){ return a.statut === 'Actif'; }).length;
+  var actifs  = agents.filter(function(a){ return a.statut === 'En service'; }).length;
   var susp    = agents.filter(function(a){ return a.statut === 'Suspendu'; }).length;
   var recentR = agents.slice().sort(function(a,b){ return new Date(b.date_recrutement)-new Date(a.date_recrutement); }).slice(0,5);
 
@@ -435,9 +435,11 @@ async function renderAgents() {
       '<select class="form-control" style="width:auto" onchange="agentFilter(\'unite\',this.value)">' + uniteOpts + '</select>' +
       '<div class="filter-tabs">' +
         ftab('', 'Tous', _agentFilters.statut === '') +
-        ftab('Actif', 'Actifs', _agentFilters.statut === 'Actif') +
+        ftab('En service', 'En service', _agentFilters.statut === 'En service') +
         ftab('Suspendu', 'Suspendus', _agentFilters.statut === 'Suspendu') +
+        ftab('Licencié', 'Licenciés', _agentFilters.statut === 'Licencié') +
         ftab('Retraité', 'Retraités', _agentFilters.statut === 'Retraité') +
+        ftab('Démission', 'Démission', _agentFilters.statut === 'Démission') +
       '</div>' +
     '</div>' +
     '<div class="card" style="padding:0;overflow:hidden">' +
@@ -500,7 +502,7 @@ async function openAgentModal(id) {
       '<div class="form-grid2">' +
         '<div class="form-group"><label class="form-label">Grade *</label><select class="form-control" id="agGrade">' + gradeOpts + '</select></div>' +
         '<div class="form-group"><label class="form-label">Statut</label><select class="form-control" id="agStatut">' +
-          ['Actif','Suspendu','Retraité','Archivé'].map(function(s){ return '<option' + (v.statut===s?' selected':'') + '>' + s + '</option>'; }).join('') +
+          ['En service','Suspendu','Licencié','Retraité','Démission','Archivé'].map(function(s){ return '<option' + (v.statut===s?' selected':'') + '>' + s + '</option>'; }).join('') +
         '</select></div>' +
       '</div>' +
       '<div class="form-grid2">' +
@@ -1508,7 +1510,7 @@ async function renderStats() {
   var { agents, recentHist } = await DB.getStats();
 
   var total = agents.length;
-  var actifs = agents.filter(function(a){ return a.statut==='Actif'; }).length;
+  var actifs = agents.filter(function(a){ return a.statut==='En service'; }).length;
   var ppa1c = agents.filter(function(a){ return a.ppa1; }).length;
   var ppa2c = agents.filter(function(a){ return a.ppa2; }).length;
   var ppa3c = agents.filter(function(a){ return a.ppa3; }).length;
