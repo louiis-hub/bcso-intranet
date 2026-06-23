@@ -677,6 +677,27 @@ async function renderAgentProfile() {
         '<div class="card">' +
           '<div class="card-head"><div class="card-icon">🏅</div><div><div class="card-title">Divisions</div></div></div>' +
           '<div class="qual-grid">' + qualHtml + '</div>' +
+          '<div style="margin-top:14px;border-top:1px solid var(--border0);padding-top:12px">' +
+            '<div class="flex-between" style="margin-bottom:8px">' +
+              '<div style="font-size:.72rem;color:var(--blue);font-weight:700;letter-spacing:.8px">📋 FORMATIONS</div>' +
+              (isAdmin() && ag.statut !== 'Archivé' ? '<button class="btn btn-ghost btn-sm" style="font-size:.72rem;padding:2px 8px" onclick="openFormationsModal(\'' + id + '\')">✏️ Formations</button>' : '') +
+            '</div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+              (function(){
+                var fmts = [
+                  { key:'formation_lead', label:'Lead Terrain' },
+                  { key:'formation_nego', label:'Négociation' }
+                ];
+                return fmts.map(function(f){
+                  var active = ag[f.key];
+                  return '<span style="padding:4px 14px;border-radius:20px;font-size:.78rem;font-weight:600;border:1px solid;' +
+                    (active ? 'background:rgba(59,130,246,.18);color:var(--blue);border-color:rgba(59,130,246,.5)' :
+                              'background:var(--bg2);color:var(--t3);border-color:var(--border0)') +
+                    '">' + f.label + '</span>';
+                }).join('');
+              })() +
+            '</div>' +
+          '</div>' +
         '</div>' +
 
         '<div class="card">' +
@@ -822,6 +843,38 @@ async function savePPAModal(agentId) {
     toast('Formations mises à jour.','success');
     await renderAgentProfile();
   } catch(e) { toast(e.message,'error'); }
+}
+
+async function openFormationsModal(agentId) {
+  var ag = await DB.getAgent(agentId);
+  if (!ag) return;
+  openModal({
+    eyebrow: 'DIVISIONS — FORMATIONS',
+    title: ag.prenom + ' ' + ag.nom,
+    body:
+      '<div class="form-group"><label class="form-label" style="color:var(--blue)">📋 Formations spécialisées</label>' +
+        '<div style="display:flex;flex-direction:column;gap:10px">' +
+          ppaCheck('fmtLead','Lead Terrain',ag.formation_lead) +
+          ppaCheck('fmtNego','Négociation',ag.formation_nego) +
+        '</div>' +
+      '</div>',
+    footer:
+      '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>' +
+      '<button class="btn btn-primary" onclick="saveFormationsModal(\'' + agentId + '\')">Enregistrer</button>'
+  });
+}
+async function saveFormationsModal(agentId) {
+  var data = {
+    formation_lead: document.getElementById('fmtLead').checked,
+    formation_nego: document.getElementById('fmtNego').checked
+  };
+  try {
+    var r = await DB.updateAgent(agentId, data);
+    if (r.error) throw r.error;
+    closeModal();
+    toast('Formations mises à jour.', 'success');
+    await renderAgentProfile();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 async function openBlameModal(agentId) {
